@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Training Tracker API — Rust on Lambda (arm64) + HTTP API + DynamoDB (on-demand)
+
+Parameters:
+  VapidSecretArn:
+    Type: String
+    Description: Secrets Manager ARN holding the Web Push (VAPID) private key. Created by scripts/deploy-api.sh.
+  VapidSubject:
+    Type: String
+    Default: mailto:admin@example.com
+    Description: "Contact for push services, a mailto: or https: URL. Set CONTACT_EMAIL in deploy.env."
+  CorsOrigins:
+    Type: String
+    Default: '*'
+    Description: Comma-separated allowed origins, e.g. https://main.d123.amplifyapp.com
+
+Resources:
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+        - { AttributeName: gsi1pk, AttributeType: S }
+        - { AttributeName: gsi1sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      # Lists users with reminders enabled (only their settings items carry gsi1 keys).
+      GlobalSecondaryIndexes:
+        - IndexName: gsi1
+          KeySchema:
+            - { AttributeName: gsi1pk, KeyType: HASH }
+            - { AttributeName: gsi1sk, KeyType: RANGE }
+          Projection: { ProjectionType: KEYS_ONLY }
+      # AI usage counters expire on their own.
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  # HS256 signing key for session tokens. Generated once; rotating it signs everyone out.
+  JwtSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Training Tracker session-token signing key
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludePunctuation: true
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 20
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      # Built by scripts/deploy-api.sh (cargo lambda build --release --arm64).
+      CodeUri: ../api/target/lambda/training-tracker-api/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      MemorySize: 512 # Argon2 password hashing is CPU/memory bound
+      Timeout: 10
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+          JWT_SECRET_ARN: !Ref JwtSecret
+          VAPID_PRIVATE_KEY_ARN: !Ref VapidSecretArn
+          VAPID_SUBJECT: !Ref VapidSubject
+          CORS_ORIGINS: !Ref CorsOrigins
+          RUST_LOG: info
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Table
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref JwtSecret
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref VapidSecretArn
+        - Statement:
+            # Model discovery for the AI coach.
+            - Effect: Allow
+              Action:
+                - bedrock:ListFoundationModels
+                - bedrock:ListInferenceProfiles
+                - bedrock:GetFoundationModelAvailability
+              Resource: '*'
+            # Converse, directly or through cross-region system inference profiles.
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - arn:aws:bedrock:*::foundation-model/*
+                - !Sub arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*
+            # Claude is used through Anthropic's own API with the user's key, never via this account.
+            - Effect: Deny
+              Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+              Resource:
+                - arn:aws:bedrock:*::foundation-model/anthropic.*
+                - !Sub arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*anthropic.*
+      Events:
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 30
+
+  # Same binary in reminders mode, run every 15 minutes on the clock.
+  ReminderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../api/target/lambda/training-tracker-api/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 120
+      Environment:
+        Variables:
+          TT_MODE: reminders
+          TABLE_NAME: !Ref Table
+          VAPID_PRIVATE_KEY_ARN: !Ref VapidSecretArn
+          VAPID_SUBJECT: !Ref VapidSubject
+          RUST_LOG: info
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Table
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref VapidSecretArn
+      Events:
+        Every15Minutes:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: cron(0/15 * * * ? *)
+
+  ReminderLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ReminderFunction}
+      RetentionInDays: 30
+
+Outputs:
+  ApiUrl:
+    Description: Set this as VITE_API_URL in Amplify
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  TableName:
+    Value: !Ref Table
+  ApiFunctionName:
+    Value: !Ref ApiFunction

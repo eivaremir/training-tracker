@@ -1,0 +1,40 @@
+# Amplify Hosting (monorepo). In the Amplify console set:
+#   AMPLIFY_MONOREPO_APP_ROOT=web
+#   VITE_API_URL=<ApiUrl output of the CloudFormation stack>
+# The SPA rewrite rule is in infra/amplify-rules.json (applied by scripts/deploy-web.sh).
+version: 1
+applications:
+  - appRoot: web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - nvm install 22
+            - nvm use 22
+            - npm ci
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: build
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+    # Keep in sync with infra/amplify-headers.yml (used by scripts/deploy-web.sh).
+    customHeaders:
+      - pattern: '/_app/immutable/**/*'
+        headers:
+          - key: Cache-Control
+            value: public, max-age=31536000, immutable
+      - pattern: '**/*'
+        headers:
+          - key: Strict-Transport-Security
+            value: max-age=31536000; includeSubDomains
+          - key: X-Content-Type-Options
+            value: nosniff
+          - key: X-Frame-Options
+            value: DENY
+          - key: Referrer-Policy
+            value: strict-origin-when-cross-origin

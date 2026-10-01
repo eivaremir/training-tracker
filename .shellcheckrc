@@ -1,0 +1,4 @@
+# check_prereqs takes optional feature flags, not the script's arguments.
+disable=SC2119
+source-path=SCRIPTDIR
+external-sources=true
