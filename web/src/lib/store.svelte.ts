@@ -1,5 +1,6 @@
 // App-wide reactive state. Mutations update local state immediately, then persist
 // (to the Rust API when VITE_API_URL is set, otherwise to localStorage).
+import { routinesOn, dayKey } from './plans';
 import { api, apiEnabled, UnauthorizedError, type Collection } from './api';
 import { buildMock } from './mock';
 import { WEEKDAYS, ymd } from './dates';
@@ -96,14 +97,12 @@ class Store {
 
   /** Routines scheduled today (or on `d`) across subscribed plans. */
   itemsFor(d: Date) {
-    const wd = WEEKDAYS[d.getDay()];
     return this.plans
       .filter((p) => p.subscribed)
-      .map((p) => {
-        const rid = p.kind === 'weekly' ? p.days[wd] : p.days[String(d.getDate())];
-        const routine = rid ? this.routine(rid) : undefined;
+      .flatMap((p) => routinesOn(p, dayKey(p, d, WEEKDAYS)).map((rid) => {
+        const routine = this.routine(rid);
         return routine ? { plan: p, routine } : null;
-      })
+      }))
       .filter((x): x is { plan: Plan; routine: Routine } => !!x);
   }
 
@@ -131,10 +130,15 @@ class Store {
     upsert(this.routines, r);
     this.persist({ put: [['routines', r]] });
   }
+  /** Plans that schedule this routine on at least one day. */
+  plansUsingRoutine = (id: string) => this.plans.filter((p) => Object.keys(p.days).some((k) => routinesOn(p, k).includes(id)));
+
+  /** Only routines that no plan uses can be deleted (the API enforces this too). */
   deleteRoutine(id: string) {
+    if (this.plansUsingRoutine(id).length) return false;
     this.routines = this.routines.filter((r) => r.id !== id);
-    this.plans.forEach((p) => Object.keys(p.days).forEach((k) => { if (p.days[k] === id) p.days[k] = null; }));
     this.persist({ del: [['routines', id]] });
+    return true;
   }
   savePlan(p: Plan) {
     upsert(this.plans, p);

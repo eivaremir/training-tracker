@@ -79,7 +79,7 @@ if [[ "$HAS_VAPID" == 1 ]]; then
   ok "Push key scheduled for deletion"
 fi
 
-if [[ "$DELETE_ARTIFACTS" == 1 ]] && aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+if [[ "$DELETE_ARTIFACTS" == 1 ]] && aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
   log "Deleting bucket $BUCKET"
   aws s3 rm "s3://$BUCKET" --recursive --only-show-errors
   aws s3api delete-bucket --bucket "$BUCKET"

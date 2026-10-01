@@ -72,8 +72,21 @@ pub struct Plan {
     pub kind: PlanKind,
     pub subscribed: bool,
     pub started_at: Option<String>,
-    /// weekly: "mon".."sun"; monthly: "1".."31" → routineId or null (rest day).
-    pub days: BTreeMap<String, Option<String>>,
+    /// weekly: "mon".."sun"; monthly: "1".."31" → routine ids in order (empty = rest day).
+    /// Also reads the older single-id-or-null form.
+    #[serde(deserialize_with = "de_plan_days")]
+    pub days: BTreeMap<String, Vec<String>>,
+}
+
+/// Max routines on one plan day.
+pub const MAX_ROUTINES_PER_DAY: usize = 6;
+
+fn de_plan_days<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<String, Vec<String>>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Slot { One(String), Many(Vec<String>) }
+    let raw = BTreeMap::<String, Option<Slot>>::deserialize(d)?;
+    Ok(raw.into_iter().map(|(k, v)| (k, match v { None => vec![], Some(Slot::One(id)) => vec![id], Some(Slot::Many(ids)) => ids })).collect())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +167,9 @@ pub struct Reminders {
     pub start: String,
     pub end: String,
     pub every_hours: u32,
+    /// Step between reminders in minutes (30 = every half hour). Older settings only have every_hours.
+    #[serde(default)]
+    pub every_minutes: Option<u32>,
     /// Only remind when a scheduled routine still has unlogged sets today.
     pub only_when_due: bool,
     /// IANA zone from the browser, e.g. "America/Los_Angeles".
@@ -162,8 +178,12 @@ pub struct Reminders {
 
 impl Default for Reminders {
     fn default() -> Self {
-        Self { enabled: false, start: "08:00".into(), end: "20:00".into(), every_hours: 4, only_when_due: true, timezone: "UTC".into() }
+        Self { enabled: false, start: "08:00".into(), end: "20:00".into(), every_hours: 4, every_minutes: None, only_when_due: true, timezone: "UTC".into() }
     }
+}
+
+impl Reminders {
+    pub fn step_minutes(&self) -> u32 { self.every_minutes.unwrap_or(self.every_hours.max(1) * 60) }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -178,6 +198,9 @@ pub struct Settings {
     pub ai_model: Option<String>,
     #[serde(default)]
     pub reminders: Reminders,
+    /// Display unit for weights: "kg" (default) or "lb". Stored weights are always kg.
+    #[serde(default)]
+    pub unit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -280,7 +303,11 @@ impl Validate for Plan {
                 PlanKind::Monthly => k.parse::<u8>().is_ok_and(|d| (1..=31).contains(&d)),
             };
             if !key_ok { return Err(format!("invalid day key `{k}` for {:?} plan", self.kind)); }
-            if let Some(rid) = v { valid_id(rid)?; }
+            if v.len() > MAX_ROUTINES_PER_DAY { return Err(format!("at most {MAX_ROUTINES_PER_DAY} routines per day")); }
+            for (i, rid) in v.iter().enumerate() {
+                valid_id(rid)?;
+                if v[..i].contains(rid) { return Err(format!("routine `{rid}` is listed twice on `{k}`")); }
+            }
         }
         Ok(())
     }
@@ -345,6 +372,13 @@ impl Settings {
         let r = &self.reminders;
         if !valid_hhmm(&r.start) || !valid_hhmm(&r.end) || r.start > r.end { return Err("reminder window must be HH:MM, start before end".into()); }
         if !(1..=12).contains(&r.every_hours) { return Err("everyHours must be 1-12".into()); }
+        if let Some(m) = r.every_minutes {
+            // The scheduler runs every 15 minutes, so steps must line up with it.
+            if !(30..=720).contains(&m) || m % 15 != 0 { return Err("everyMinutes must be 30-720 in steps of 15".into()); }
+        }
+        if let Some(u) = &self.unit {
+            if u != "kg" && u != "lb" { return Err("unit must be kg or lb".into()); }
+        }
         if r.timezone.parse::<chrono_tz::Tz>().is_err() { return Err("unknown timezone".into()); }
         Ok(())
     }

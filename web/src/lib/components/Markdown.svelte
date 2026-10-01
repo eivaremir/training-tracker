@@ -32,7 +32,7 @@
 
 <style>
   .md { font-family: var(--f-sans); font-size: 13.5px; line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
-  .md.sm { font-size: 12.5px; }
+  .md.sm { font-size: 13.5px; }
   .md :global(> :first-child) { margin-top: 0; }
   .md :global(> :last-child) { margin-bottom: 0; }
 
@@ -43,7 +43,7 @@
   .md :global(h1) { font-size: 20px; }
   .md :global(h2) { font-size: 17px; }
   .md :global(h3) { font-size: 15px; }
-  .md :global(h4) { font-family: var(--f-mono); font-weight: 500; font-size: 10px; letter-spacing: 1.2px; color: var(--text-mid); }
+  .md :global(h4) { font-family: var(--f-mono); font-weight: 500; font-size: 12px; letter-spacing: 1.2px; color: var(--text-mid); }
   .md :global(h2), .md :global(h3) { display: flex; align-items: center; gap: 8px; }
   .md :global(h2)::before, .md :global(h3)::before { content: ''; width: 3px; height: 1em; border-radius: 2px; background: var(--text); flex-shrink: 0; }
 
@@ -58,7 +58,7 @@
   .md :global(ol) { counter-reset: md-ol; }
   .md :global(ol > li) { counter-increment: md-ol; padding-left: 26px; }
   .md :global(ol > li)::before { content: counter(md-ol); position: absolute; left: 0; top: 0.1em; width: 18px; height: 18px; border-radius: 9px;
-    background: var(--surface-hi); border: 1px solid var(--border); font-family: var(--f-cond); font-weight: 700; font-size: 11px; color: var(--text-mid);
+    background: var(--surface-hi); border: 1px solid var(--border); font-family: var(--f-cond); font-weight: 700; font-size: 12px; color: var(--text-mid);
     display: flex; align-items: center; justify-content: center; }
   .md :global(li > ul), .md :global(li > ol) { margin: 6px 0 0; }
   .md :global(ul ul > li)::before { background: transparent; border: 1.5px solid var(--mid); width: 5px; height: 5px; }
@@ -74,7 +74,7 @@
 
   .md :global(hr) { border: none; border-top: 1px dashed var(--border-hi); margin: 14px 0; }
 
-  .md :global(table) { width: 100%; border-collapse: collapse; margin: 0 0 12px; font-size: 12.5px; display: block; overflow-x: auto; }
+  .md :global(table) { width: 100%; border-collapse: collapse; margin: 0 0 12px; font-size: 13.5px; display: block; overflow-x: auto; }
   .md :global(th), .md :global(td) { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
-  .md :global(th) { font-family: var(--f-mono); font-weight: 500; font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-mid); }
+  .md :global(th) { font-family: var(--f-mono); font-weight: 500; font-size: 11.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-mid); }
 </style>

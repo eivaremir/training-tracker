@@ -9,13 +9,14 @@
   import Button from '$lib/components/Button.svelte';
   import WeightCard from '$lib/components/WeightCard.svelte';
   import { store } from '$lib/store.svelte';
+  import { unit, toUnit } from '$lib/units';
   import { addDays, ymd } from '$lib/dates';
 
   const cut = ymd(addDays(store.today, -27));
   const sessions = $derived(store.sessions.filter((s) => s.date >= cut && s.logs.length).sort((a, b) => a.date.localeCompare(b.date)));
   const stats = $derived(sessions.map((s) => {
     const total = s.logs.length, hit = s.logs.filter((l) => l.hitGoal).length;
-    const volume = Math.round(s.logs.reduce((n, l) => n + (l.actual ? l.actual.reps * l.actual.weight : 0), 0));
+    const volume = Math.round(toUnit(s.logs.reduce((n, l) => n + (l.actual ? l.actual.reps * l.actual.weight : 0), 0), 0));
     return { date: s.date, total, hit, pct: total ? hit / total : 0, volume };
   }));
   const last12 = $derived(stats.slice(-12));
@@ -32,7 +33,7 @@
 <TopBar title="Progress" subtitle="LAST 28 DAYS">
   {#snippet right()}<IconButton icon="settings" size={19} label="Settings" onclick={() => goto('/settings')} />{/snippet}
 </TopBar>
-<div class="page">
+<div class="page r-cols">
   <WeightCard days={90} />
 
   <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
@@ -68,7 +69,7 @@
       <Label>Total volume · last 12 sessions</Label>
       <div style="margin-top:10px">
         <BigNum size={32}>{(last12[last12.length - 1]?.volume || 0).toLocaleString()}</BigNum>
-        <Label size={10} color="var(--text-low)"> kg most recent</Label>
+        <Label size={10} color="var(--text-low)"> {unit()} most recent</Label>
       </div>
       <svg width="100%" height="80" viewBox="0 0 {last12.length * 30} 80" preserveAspectRatio="none" style="margin-top:14px" aria-label="Volume trend">
         <polyline points={last12.map((s, i) => `${i * 30 + 15},${vy(s.volume)}`).join(' ')} fill="none" stroke="var(--text)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
@@ -80,7 +81,7 @@
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><Icon name="trophy" size={14} /><Label>Personal records</Label></div>
       <div class="prs">
         {#each prs as [exId, w] (exId)}
-          <div><span>{store.exercise(exId)?.name || '—'}</span><div><BigNum size={20}>{w}</BigNum><Label size={9} color="var(--text-low)"> kg</Label></div></div>
+          <div><span>{store.exercise(exId)?.name || '—'}</span><div><BigNum size={20}>{toUnit(w)}</BigNum><Label size={9} color="var(--text-low)"> {unit()}</Label></div></div>
         {/each}
       </div>
     </div>

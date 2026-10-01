@@ -115,6 +115,6 @@
     outline: none; font-family: var(--f-sans); font-size: 13px; resize: vertical; }
   .inuse { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
   .tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
-  .tags span { padding: 3px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font-family: var(--f-sans); font-size: 11px; color: var(--text-mid); }
+  .tags span { padding: 3px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font-family: var(--f-sans); font-size: 12px; color: var(--text-mid); }
   .confirm { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 </style>

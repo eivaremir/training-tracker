@@ -87,8 +87,13 @@ async fn del_exercise(State(c): Ctx, UserId(u): UserId, Path(id): Path<String>) 
     c.repo.delete_exercise(&u, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+/// Routines can only be deleted once no plan schedules them.
 async fn del_routine(State(c): Ctx, UserId(u): UserId, Path(id): Path<String>) -> ApiResult<StatusCode> {
-    c.repo.delete_routine(&u, &id).await?;
+    let used_by = c.repo.plans_using_routine(&u, &id).await?;
+    if !used_by.is_empty() {
+        return Err(ApiError::Conflict(format!("routine is used by: {}", used_by.join(", "))));
+    }
+    c.repo.delete(&u, Kind::Routine, &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 async fn del_plan(State(c): Ctx, UserId(u): UserId, Path(id): Path<String>) -> ApiResult<StatusCode> {

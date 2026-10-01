@@ -7,17 +7,19 @@
   import WeightSheet from './WeightSheet.svelte';
   import { store } from '../store.svelte';
   import { addDays, parseYmd, ymd } from '../dates';
+  import { unit, toUnit, fmtWeight } from '../units';
 
   let { compact = false, days = 90 }: { compact?: boolean; days?: number } = $props();
   let logging = $state(false);
 
   const goal = $derived(store.settings.weightGoalKg);
+  const u = (kg: number) => toUnit(kg);
   const all = $derived(store.weights);
   const latest = $derived(all.at(-1));
   const recent = $derived(all.filter((w) => w.date >= ymd(addDays(store.today, -(days - 1)))));
   const monthAgo = $derived([...all].reverse().find((w) => w.date <= ymd(addDays(store.today, -30))));
-  const change = $derived(latest && monthAgo ? Math.round((latest.kg - monthAgo.kg) * 10) / 10 : null);
-  const toGoal = $derived(latest && goal != null ? Math.round((goal - latest.kg) * 10) / 10 : null);
+  const change = $derived(latest && monthAgo ? Math.round((u(latest.kg) - u(monthAgo.kg)) * 10) / 10 : null);
+  const toGoal = $derived(latest && goal != null ? Math.round((u(goal) - u(latest.kg)) * 10) / 10 : null);
   // Progress from the first recorded weight toward the goal.
   const progress = $derived.by(() => {
     if (goal == null || !latest || all.length < 2) return null;
@@ -36,7 +38,7 @@
     const y = (kg: number) => P + (1 - (kg - lo) / (hi - lo)) * (H - 2 * P);
     return {
       line: recent.map((w) => `${x(w.date).toFixed(1)},${y(w.kg).toFixed(1)}`).join(' '),
-      dots: recent.map((w) => ({ cx: x(w.date), cy: y(w.kg), label: `${w.date}: ${w.kg} kg` })),
+      dots: recent.map((w) => ({ cx: x(w.date), cy: y(w.kg), label: `${w.date}: ${fmtWeight(w.kg)}` })),
       goalY: goal != null ? y(goal) : null, lo, hi
     };
   });
@@ -51,15 +53,15 @@
   </div>
 
   {#if !latest}
-    <p class="muted">Log your weight to track it{goal != null ? ` against your ${goal} kg goal` : ''}.</p>
+    <p class="muted">Log your weight to track it{goal != null ? ` against your ${fmtWeight(goal)} goal` : ''}.</p>
   {:else}
     <div class="stats">
-      <div><Label size={9} color="var(--text-low)">Latest</Label><div><BigNum size={compact ? 26 : 30}>{latest.kg}</BigNum><span class="u">kg</span></div></div>
+      <div><Label size={9} color="var(--text-low)">Latest</Label><div><BigNum size={compact ? 26 : 30}>{u(latest.kg)}</BigNum><span class="u">{unit()}</span></div></div>
       {#if goal != null}
-        <div><Label size={9} color="var(--text-low)">Goal</Label><div><BigNum size={compact ? 26 : 30}>{goal}</BigNum><span class="u">kg</span></div></div>
-        <div><Label size={9} color="var(--text-low)">To go</Label><div><BigNum size={compact ? 26 : 30}>{toGoal === 0 ? '0' : signed(toGoal!)}</BigNum><span class="u">kg</span></div></div>
+        <div><Label size={9} color="var(--text-low)">Goal</Label><div><BigNum size={compact ? 26 : 30}>{u(goal)}</BigNum><span class="u">{unit()}</span></div></div>
+        <div><Label size={9} color="var(--text-low)">To go</Label><div><BigNum size={compact ? 26 : 30}>{toGoal === 0 ? '0' : signed(toGoal!)}</BigNum><span class="u">{unit()}</span></div></div>
       {:else if change != null}
-        <div><Label size={9} color="var(--text-low)">30 days</Label><div><BigNum size={compact ? 26 : 30}>{signed(change)}</BigNum><span class="u">kg</span></div></div>
+        <div><Label size={9} color="var(--text-low)">30 days</Label><div><BigNum size={compact ? 26 : 30}>{signed(change)}</BigNum><span class="u">{unit()}</span></div></div>
       {/if}
     </div>
     {#if progress != null}
@@ -70,7 +72,7 @@
         <svg viewBox="0 0 {W} {H}" width="100%" role="img" aria-label="Body weight over the last {days} days">
           {#if chart.goalY != null}
             <line x1={P} x2={W - P} y1={chart.goalY} y2={chart.goalY} stroke="var(--mid)" stroke-dasharray="4 4" />
-            <text x={W - P} y={chart.goalY - 4} text-anchor="end" font-size="8" fill="var(--text-low)" font-family="JetBrains Mono, monospace">GOAL {goal}</text>
+            <text x={W - P} y={chart.goalY - 4} text-anchor="end" font-size="10" fill="var(--text-low)" font-family="JetBrains Mono, monospace">GOAL {u(goal!)}</text>
           {/if}
           <polyline points={chart.line} fill="none" stroke="var(--text)" stroke-width="1.6" stroke-linejoin="round" />
           {#each chart.dots as d}<circle cx={d.cx} cy={d.cy} r="2.2" fill="var(--text)"><title>{d.label}</title></circle>{/each}
@@ -79,7 +81,7 @@
       {:else}
         <p class="muted">Log at least two days to see the trend.</p>
       {/if}
-      {#if change != null && goal != null}<Label size={9} color="var(--text-low)">{signed(change)} kg in the last 30 days</Label>{/if}
+      {#if change != null && goal != null}<Label size={9} color="var(--text-low)">{signed(change)} {unit()} in the last 30 days</Label>{/if}
     {/if}
   {/if}
 </div>

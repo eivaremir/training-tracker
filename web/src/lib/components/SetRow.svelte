@@ -4,6 +4,7 @@
   import BigNum from './BigNum.svelte';
   import Label from './Label.svelte';
   import type { SetGoal, SetLog } from '../types';
+  import { unit, toUnit, keepOrConvert, liftStep, meetsGoal, fmtWeight } from '../units';
 
   let { idx, goal, log, isActive, onhit, onedit, onundo }: {
     idx: number; goal: SetGoal; log?: SetLog; isActive: boolean;
@@ -69,16 +70,16 @@
         {@const c = hit ? 'var(--text)' : 'var(--text-mid)'}
         <div class="pair">
           <BigNum size={26} color={c}>{log.actual?.reps ?? '—'}</BigNum><Label size={9}>×</Label>
-          <BigNum size={26} color={c}>{log.actual?.weight ?? 0}</BigNum><Label size={9}>kg</Label>
+          <BigNum size={26} color={c}>{toUnit(log.actual?.weight ?? 0)}</BigNum><Label size={9}>{unit()}</Label>
         </div>
         {#if !hit && log.actual && log.goalSnapshot}
-          <Label size={9} color="var(--text-low)">goal {log.goalSnapshot.reps}×{log.goalSnapshot.weight}</Label>
+          <Label size={9} color="var(--text-low)">goal {log.goalSnapshot.reps}×{toUnit(log.goalSnapshot.weight)}</Label>
         {/if}
       {:else}
         {@const c = isActive ? 'var(--text)' : 'var(--text-mid)'}
         <div class="pair">
           <BigNum size={26} color={c}>{goal.reps}</BigNum><Label size={9}>×</Label>
-          <BigNum size={26} color={c}>{goal.weight}</BigNum><Label size={9}>kg</Label>
+          <BigNum size={26} color={c}>{toUnit(goal.weight)}</BigNum><Label size={9}>{unit()}</Label>
         </div>
       {/if}
     </div>

@@ -30,6 +30,9 @@
 </div>
 
 <style>
+  @media (min-width: 720px) {
+    .timer { left: auto !important; right: 16px !important; bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important; width: 420px; }
+  }
   .timer { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 50; max-width: 456px; margin: 0 auto;
     background: var(--surface-hi); border: 1px solid var(--border-hi); border-radius: 14px; padding: 14px 16px;
     display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow); }

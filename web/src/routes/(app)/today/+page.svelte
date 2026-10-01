@@ -14,6 +14,7 @@
   import EditSetForm from '$lib/components/EditSetForm.svelte';
   import RestTimer from '$lib/components/RestTimer.svelte';
   import { store } from '$lib/store.svelte';
+  import { meetsGoal, fmtWeight } from '$lib/units';
   import { uid, weekdayKey, ymd } from '$lib/dates';
   import type { RoutineExercise, SetLog } from '$lib/types';
 
@@ -26,10 +27,14 @@
 
   // Default: ?plan= from the dashboard, else a plan with an unfinished session today, else the first item.
   const selected = $derived.by(() => {
-    const key = selectedKey ?? page.url.searchParams.get('plan');
+    // Key is "planId/routineId"; links from older builds pass only ?plan=.
+    const q = page.url.searchParams;
+    const key = selectedKey ?? (q.get('plan') ? `${q.get('plan')}/${q.get('routine') ?? ''}` : null);
+    const [kp, kr] = key?.split('/') ?? [];
     return (
-      items.find((it) => it.plan.id === key) ??
-      items.find((it) => store.sessions.some((s) => s.planId === it.plan.id && s.date === todayStr && !s.endedAt)) ??
+      items.find((it) => it.plan.id === kp && it.routine.id === kr) ??
+      items.find((it) => it.plan.id === kp && !kr) ??
+      items.find((it) => store.sessions.some((s) => s.planId === it.plan.id && s.routineId === it.routine.id && s.date === todayStr && !s.endedAt)) ??
       items[0]
     );
   });
@@ -66,7 +71,7 @@
   function saveEdit(actual: { reps: number; weight: number }) {
     if (!editing) return;
     const g = editing.re.goals[editing.idx];
-    record(editing.re, editing.idx, actual, actual.reps >= g.reps && actual.weight >= g.weight);
+    record(editing.re, editing.idx, actual, actual.reps >= g.reps && meetsGoal(actual.weight, g.weight));
     editing = null;
   }
   function skip() {
@@ -101,7 +106,7 @@
   {#if items.length > 1}
     <div class="picker">
       {#each items as it (it.plan.id + it.routine.id)}
-        <button class:on={it.plan.id === plan.id && it.routine.id === routine.id} onclick={() => { selectedKey = it.plan.id; restSeconds = null; }}>
+        <button class:on={it.plan.id === plan.id && it.routine.id === routine.id} onclick={() => { selectedKey = `${it.plan.id}/${it.routine.id}`; restSeconds = null; }}>
           {it.routine.name} · {it.plan.name}
         </button>
       {/each}
@@ -121,16 +126,16 @@
     <div class="track"><div style:width="{totalSets ? (logs.length / totalSets) * 100 : 0}%"></div></div>
   </div>
 
-  <div class="list">
+  <div class="list r-grid">
     {#each routine.exercises as re, exIdx (re.exerciseId + exIdx)}
       {@const ex = store.exercise(re.exerciseId)}
       {@const exDone = re.goals.every((_, i) => logAt(re.exerciseId, i))}
-      <div class="ex" style:margin-top="{exIdx === 0 ? 4 : 18}px">
+      <div class="ex r-flat" style:margin-top="{exIdx === 0 ? 4 : 18}px">
         <div class="ex-head">
-          <ExerciseThumb name={ex?.name} muscles={ex?.muscles} size={44} />
+          <ExerciseThumb name={ex?.name} muscles={ex?.muscles} images={ex?.images} instructions={ex?.instructions} size={44} zoom />
           <div style="flex:1;min-width:0">
             <div class="ex-name">{ex?.name ?? 'Deleted exercise'}</div>
-            <Label size={9} color="var(--text-low)">{re.goals.length} sets · {re.goals[0]?.reps}×{re.goals[0]?.weight}kg · rest {re.goals[0]?.restSeconds}s</Label>
+            <Label size={9} color="var(--text-low)">{re.goals.length} sets · {re.goals[0]?.reps}×{fmtWeight(re.goals[0]?.weight ?? 0)} · rest {re.goals[0]?.restSeconds}s</Label>
           </div>
           {#if exDone}<div class="done"><Icon name="check" size={14} /></div>{/if}
         </div>
@@ -157,7 +162,7 @@
 {/if}
 
 <Sheet open={!!editing} onclose={() => (editing = null)} title="Edit set">
-  {#if editing}<EditSetForm goal={editing.re.goals[editing.idx]} onsave={saveEdit} onskip={skip} />{/if}
+  {#if editing}<EditSetForm goal={editing.re.goals[editing.idx]} equipment={store.exercise(editing.re.exerciseId)?.equipment} onsave={saveEdit} onskip={skip} />{/if}
 </Sheet>
 
 <Sheet open={restSheet} onclose={() => (restSheet = false)} title="Rest timer">
@@ -181,10 +186,10 @@
   .empty > div:first-of-type { margin-top: 12px; font-family: var(--f-sans); font-size: 14px; }
   .rest-btn { padding: 8px 12px; border-radius: 8px; background: transparent; border: 1px solid var(--border); color: var(--text);
     cursor: pointer; display: flex; align-items: center; gap: 6px; }
-  .rest-btn span { font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+  .rest-btn span { font-family: var(--f-cond); font-weight: 600; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
   .picker { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; overflow-x: auto; }
   .picker button { padding: 8px 12px; flex-shrink: 0; background: transparent; color: var(--text-mid); border: 1px solid var(--border);
-    border-radius: 8px; cursor: pointer; font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 1px;
+    border-radius: 8px; cursor: pointer; font-family: var(--f-cond); font-weight: 600; font-size: 13px; letter-spacing: 1px;
     text-transform: uppercase; white-space: nowrap; }
   .picker button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
   .overall { padding: 14px 16px; border-bottom: 1px solid var(--border); }
@@ -199,7 +204,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .done { width: 24px; height: 24px; border-radius: 12px; background: var(--text); color: var(--bg); display: flex; align-items: center; justify-content: center; }
   .gestures { margin-top: 18px; padding: 14px 16px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-mid); }
-  .gestures div { margin-top: 6px; font-family: var(--f-sans); font-size: 12px; line-height: 1.5; }
+  .gestures div { margin-top: 6px; font-family: var(--f-sans); font-size: 13px; line-height: 1.5; }
   .rest-cfg { padding: 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .rest-title { font-family: var(--f-sans); font-size: 14px; color: var(--text); font-weight: 500; }
 </style>

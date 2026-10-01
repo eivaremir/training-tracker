@@ -23,6 +23,6 @@
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
   button { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 6px; border-radius: 10px; cursor: pointer;
     background: var(--bg); border: 1px solid var(--border); color: var(--text-mid);
-    font-family: var(--f-cond); font-weight: 600; font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase; text-align: center; }
+    font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; text-align: center; }
   button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
 </style>

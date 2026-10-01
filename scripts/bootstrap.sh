@@ -17,7 +17,7 @@ USAGE
 check_prereqs
 BUCKET="$(artifact_bucket)"
 
-if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+if aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
   ok "Bucket s3://$BUCKET exists"
 else
   log "Creating s3://$BUCKET in $AWS_REGION"

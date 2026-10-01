@@ -75,7 +75,7 @@
   .photos { display: grid; gap: 6px; }
   figure { margin: 0; display: flex; flex-direction: column; gap: 4px; }
   img, .ph { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-hi); display: block; }
-  .ph { display: flex; align-items: center; justify-content: center; font-family: var(--f-mono); font-size: 8px; letter-spacing: 1px; color: var(--text-low);
+  .ph { display: flex; align-items: center; justify-content: center; font-family: var(--f-mono); font-size: 11px; letter-spacing: 1px; color: var(--text-low);
     background: repeating-linear-gradient(45deg, var(--stripe-a) 0 8px, var(--stripe-b) 8px 16px); }
   .map { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
   .map-head { display: flex; justify-content: space-between; align-items: baseline; }
@@ -83,13 +83,13 @@
   .chips, .meta { display: flex; flex-wrap: wrap; gap: 6px; }
   .chips { margin-top: 10px; }
   .chip { padding: 3px 7px; border-radius: 4px; border: 1px solid var(--border-hi); color: var(--text); font-family: var(--f-cond); font-weight: 600;
-    font-size: 11px; letter-spacing: 0.8px; text-transform: uppercase; }
+    font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; }
   .chip.p { background: var(--text); color: var(--bg); border-color: var(--text); }
   .tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border);
-    background: var(--surface); color: var(--text); font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; }
+    background: var(--surface); color: var(--text); font-family: var(--f-cond); font-weight: 600; font-size: 13px; letter-spacing: 0.8px; text-transform: uppercase; }
   .tag.muted { color: var(--text-mid); }
   ol { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
   li { display: flex; gap: 10px; font-family: var(--f-sans); font-size: 13px; line-height: 1.5; color: var(--text); }
   .n { flex-shrink: 0; width: 20px; height: 20px; border-radius: 10px; background: var(--surface-hi); border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center; font-family: var(--f-cond); font-weight: 700; font-size: 11px; color: var(--text-mid); }
+    display: flex; align-items: center; justify-content: center; font-family: var(--f-cond); font-weight: 700; font-size: 12px; color: var(--text-mid); }
 </style>

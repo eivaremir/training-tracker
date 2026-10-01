@@ -3,22 +3,26 @@
   import NumField from './NumField.svelte';
   import Label from './Label.svelte';
   import { store } from '../store.svelte';
+  import { unit, toUnit, keepOrConvert } from '../units';
 
   let { date, onclose }: { date: string; onclose: () => void } = $props();
   // svelte-ignore state_referenced_locally
   const existing = store.weights.find((w) => w.date === date);
   const last = store.weights.at(-1);
   // svelte-ignore state_referenced_locally
-  let kg = $state(existing?.kg ?? last?.kg ?? 75);
+  const startKg = existing?.kg ?? last?.kg ?? 75;
+  // svelte-ignore state_referenced_locally
+  let value = $state(toUnit(startKg));
+  const kg = $derived(keepOrConvert(startKg, value));
   // svelte-ignore state_referenced_locally
   let day = $state(date);
 
-  const save = () => { store.saveWeight({ id: day, date: day, kg: Math.round(kg * 10) / 10 }); onclose(); };
+  const save = () => { store.saveWeight({ id: day, date: day, kg: Math.round(kg * 100) / 100 }); onclose(); };
 </script>
 
 <div class="wrap">
   <label class="date"><Label>Date</Label><input type="date" bind:value={day} max={store.todayStr} /></label>
-  <NumField label="Body weight" bind:value={kg} suffix="kg" step={0.1} />
+  <NumField label="Body weight" bind:value={value} suffix={unit()} step={0.1} />
   <div class="row">
     {#if store.weights.some((w) => w.date === day)}
       <Button variant="danger" onclick={() => { store.deleteWeight(day); onclose(); }}>Delete</Button>

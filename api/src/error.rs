@@ -8,6 +8,7 @@ pub enum ApiError {
     BadCredentials,
     TooManyAttempts,
     TooManyRequests(String),
+    Conflict(String),
     Unavailable(String),
     Internal(anyhow::Error),
 }
@@ -25,6 +26,7 @@ impl IntoResponse for ApiError {
             ApiError::TooManyAttempts => (StatusCode::TOO_MANY_REQUESTS, "too many failed attempts, try again later".into()),
             ApiError::TooManyRequests(m) => (StatusCode::TOO_MANY_REQUESTS, m),
             ApiError::Unavailable(m) => (StatusCode::SERVICE_UNAVAILABLE, m),
+            ApiError::Conflict(m) => (StatusCode::CONFLICT, m),
             ApiError::Internal(e) => {
                 tracing::error!(error = ?e, "internal error");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())

@@ -77,6 +77,9 @@
 
 <style>
   .login { min-height: 100vh; display: flex; flex-direction: column; }
+  /* Wide screens: keep the form at phone width, centred under the full-width hero. */
+  @media (min-width: 720px) { .body { width: 100%; max-width: 440px; margin: 0 auto; } }
+  @media (min-width: 720px) and (max-height: 520px) { .hero { height: calc(120px + env(safe-area-inset-top, 0px)); } }
   .hero { position: relative; height: calc(220px + env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
     background: repeating-linear-gradient(45deg, var(--stripe-a) 0 10px, var(--stripe-b) 10px 20px); border-bottom: 1px solid var(--border); }
   .theme { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); right: 12px; }
@@ -92,7 +95,7 @@
     color: var(--text-low); border-top: 1px solid var(--border); }
   .secure { display: flex; align-items: center; gap: 6px; }
   .byline { display: inline-flex; align-items: center; gap: 6px; color: var(--text-low); text-decoration: none;
-    font-family: var(--f-mono); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; transition: color 0.15s; }
+    font-family: var(--f-mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; transition: color 0.15s; }
   .byline strong { font-weight: 500; color: var(--text-mid); transition: color 0.15s; }
   .byline:hover, .byline:hover strong { color: var(--text); }
 </style>

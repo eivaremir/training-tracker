@@ -3,12 +3,13 @@ import { api, ApiError } from './api';
 import { claudeReview, describeClaudeError, getClaudeKey, DEFAULT_CLAUDE_MODEL } from './anthropic';
 import { store } from './store.svelte';
 import { uid } from './dates';
+import { unit, toUnit, fmtWeight } from './units';
 import type { AiReview, Session } from './types';
 
 // Same instructions the API uses for Bedrock (api/src/ai.rs) — keep them in sync.
 export const COACH_SYSTEM = "You are an experienced strength and conditioning coach reviewing a user's training log. \
 Base every observation only on the data provided. Be specific and concise: what went well, what to watch, \
-and 1-3 concrete suggestions for the next session (load, reps, rest, exercise choice). Use kg; a weight of 0 kg means bodyweight. \
+and 1-3 concrete suggestions for the next session (load, reps, rest, exercise choice). Use the weight unit the log uses (kg or lb); a weight of 0 means bodyweight. \
 Format the answer in concise Markdown: short '###' sections (for example What went well, Watch, Next session), bullet lists, **bold** for key numbers; no tables. \
 Do not give medical advice; if something suggests pain or injury, recommend consulting a professional. \
 Reply in English unless the user's question is clearly written in another language, then use that language.";
@@ -34,8 +35,8 @@ function describeSession(s: Session): string {
   for (const [exId, logs] of byEx) {
     lines.push(`- ${store.exercise(exId)?.name ?? exId}:`);
     logs.sort((a, b) => a.setIndex - b.setIndex).forEach((l) => {
-      const did = l.actual ? `${l.actual.reps} reps × ${l.actual.weight} kg` : 'skipped';
-      const goal = l.goalSnapshot ? ` (goal ${l.goalSnapshot.reps} × ${l.goalSnapshot.weight} kg${l.hitGoal ? ', hit' : ', missed'})` : '';
+      const did = l.actual ? `${l.actual.reps} reps × ${fmtWeight(l.actual.weight)}` : 'skipped';
+      const goal = l.goalSnapshot ? ` (goal ${l.goalSnapshot.reps} × ${fmtWeight(l.goalSnapshot.weight)}${l.hitGoal ? ', hit' : ', missed'})` : '';
       lines.push(`  - set ${l.setIndex + 1}: ${did}${goal}`);
     });
   }
@@ -46,10 +47,10 @@ function describeSession(s: Session): string {
 /** The day's training plus recent history of the same exercises, for context. */
 export function buildDayPrompt(date: string, question: string): string {
   const sessions = store.sessions.filter((s) => s.date === date && s.logs.length);
-  const parts = [`Training log for ${date}. All weights in kg; 0 kg means bodyweight.`];
+  const parts = [`Training log for ${date}. All weights in ${unit()}; 0 means bodyweight.`];
 
   const w = store.weights.filter((x) => x.date <= date).slice(-5);
-  if (w.length) parts.push(`Body weight: ${w.map((x) => `${x.date} ${x.kg}`).join(', ')}${store.settings.weightGoalKg ? `; goal ${store.settings.weightGoalKg}` : ''}.`);
+  if (w.length) parts.push(`Body weight: ${w.map((x) => `${x.date} ${fmtWeight(x.kg)}`).join(', ')}${store.settings.weightGoalKg ? `; goal ${fmtWeight(store.settings.weightGoalKg)}` : ''}.`);
 
   parts.push(sessions.length ? sessions.map(describeSession).join('\n\n') : 'No sets logged this day.');
   const notes = store.day(date)?.notes?.trim();
@@ -62,7 +63,7 @@ export function buildDayPrompt(date: string, question: string): string {
       .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
     if (!prev.length) continue;
     const rows = prev.map((s) => {
-      const sets = s.logs.filter((l) => l.exerciseId === id && l.actual).map((l) => `${l.actual!.reps}×${l.actual!.weight}`);
+      const sets = s.logs.filter((l) => l.exerciseId === id && l.actual).map((l) => `${l.actual!.reps}×${toUnit(l.actual!.weight)}`);
       return `${s.date}: ${sets.join(', ')}`;
     });
     history.push(`- ${store.exercise(id)?.name ?? id}: ${rows.join(' | ')}`);

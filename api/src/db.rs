@@ -132,17 +132,12 @@ impl Repo {
         Ok(())
     }
 
-    /// Deleting a routine turns every plan day that referenced it into a rest day.
-    pub async fn delete_routine(&self, user: &str, id: &str) -> Result<()> {
-        self.delete(user, Kind::Routine, id).await?;
-        for mut p in self.list::<Plan>(user, Kind::Plan).await? {
-            let mut changed = false;
-            for v in p.days.values_mut() {
-                if v.as_deref() == Some(id) { *v = None; changed = true; }
-            }
-            if changed { self.put(user, Kind::Plan, &p.id.clone(), &p).await?; }
-        }
-        Ok(())
+    /// Names of plans that schedule `routine_id` on at least one day.
+    pub async fn plans_using_routine(&self, user: &str, routine_id: &str) -> Result<Vec<String>> {
+        Ok(self.list::<Plan>(user, Kind::Plan).await?.into_iter()
+            .filter(|p| p.days.values().any(|v| v.iter().any(|r| r == routine_id)))
+            .map(|p| p.name)
+            .collect())
     }
 
     /// Bulk upsert (used to load demo data). BatchWriteItem takes 25 items per call.

@@ -11,6 +11,7 @@
   import { store } from '../store.svelte';
   import { uid } from '../dates';
   import type { Routine, RoutineExercise } from '../types';
+  import { toUnit } from '../units';
 
   let { routine, onsave, oncancel, ondelete }: {
     routine?: Routine; onsave: (r: Routine) => void; oncancel: () => void; ondelete?: (id: string) => void;
@@ -23,6 +24,7 @@
   let picking = $state(false);
   let editingGoal = $state<number | null>(null);
   let confirmDel = $state(false);
+  const usedBy = $derived(routine ? store.plansUsingRoutine(routine.id) : []);
 
   function addEx(exerciseId: string) {
     const g = { reps: 8, weight: 20, restSeconds: 90 };
@@ -55,7 +57,7 @@
               <button onclick={() => moveEx(idx, -1)} disabled={idx === 0} aria-label="Move up">▲</button>
               <button onclick={() => moveEx(idx, 1)} disabled={idx === exs.length - 1} aria-label="Move down">▼</button>
             </div>
-            <ExerciseThumb name={ex?.name} muscles={ex?.muscles} size={36} />
+            <ExerciseThumb name={ex?.name} muscles={ex?.muscles} images={ex?.images} instructions={ex?.instructions} size={36} zoom />
             <div class="name-col">
               <div class="name">{ex?.name ?? 'Deleted exercise'}</div>
               <Label size={9} color="var(--text-low)">{re.goals.length} sets</Label>
@@ -67,7 +69,7 @@
             {#each re.goals as g, i}
               <div class="g">
                 <Label size={8} color="var(--text-low)">S{i + 1}</Label>
-                <div style="margin-top:1px"><BigNum size={14}>{g.reps}</BigNum><span class="x">×</span><BigNum size={14}>{g.weight}</BigNum></div>
+                <div style="margin-top:1px"><BigNum size={14}>{g.reps}</BigNum><span class="x">×</span><BigNum size={14}>{toUnit(g.weight)}</BigNum></div>
               </div>
             {/each}
           </div>
@@ -77,8 +79,11 @@
     <button class="dashed-btn add" onclick={() => (picking = true)}><Icon name="plus" size={14} /> Add exercise</button>
   </div>
 
+  {#if routine && usedBy.length}
+    <p class="locked">Used by <strong>{usedBy.map((p) => p.name).join(', ')}</strong>. Remove it from {usedBy.length > 1 ? 'those plans' : 'that plan'} to delete it.</p>
+  {/if}
   <div class="row" style="margin-top:6px">
-    {#if routine && ondelete}<Button variant="danger" icon="trash" onclick={() => (confirmDel = true)}>Delete</Button>{/if}
+    {#if routine && ondelete}<Button variant="danger" icon="trash" disabled={usedBy.length > 0} onclick={() => (confirmDel = true)}>Delete</Button>{/if}
     <div style="flex:1"></div>
     <Button variant="secondary" onclick={oncancel}>Cancel</Button>
     <Button onclick={save} disabled={!name || !exs.length}>Save</Button>
@@ -92,7 +97,7 @@
 <Sheet open={editingGoal !== null} onclose={() => (editingGoal = null)} title="Edit goals" height="92vh">
   {#if editingGoal !== null}
     {@const i = editingGoal}
-    <GoalEditor goals={exs[i].goals}
+    <GoalEditor goals={exs[i].goals} equipment={store.exercise(exs[i].exerciseId)?.equipment}
       onsave={(g) => { exs[i].goals = g; exs[i].goalUpdatedAt = new Date().toISOString(); editingGoal = null; }}
       oncancel={() => (editingGoal = null)} />
   {/if}
@@ -100,8 +105,7 @@
 
 <Sheet open={confirmDel} onclose={() => (confirmDel = false)} title="Delete routine?">
   <div class="confirm">
-    <div class="body-copy"><strong>{routine?.name}</strong> will be removed. Plans referencing it become rest days.
-      Logged sessions stay in history with their goal snapshots.</div>
+    <div class="body-copy"><strong>{routine?.name}</strong> will be removed. Logged sessions stay in history with their goal snapshots.</div>
     <div class="row">
       <Button variant="secondary" full onclick={() => (confirmDel = false)}>Cancel</Button>
       <Button variant="danger" full icon="trash" onclick={() => { confirmDel = false; ondelete?.(routine!.id); }}>Delete</Button>
@@ -123,7 +127,9 @@
   .del { background: transparent; border: none; color: var(--danger); cursor: pointer; padding: 6px; }
   .goals { display: grid; gap: 4px; }
   .g { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 4px; text-align: center; }
-  .x { color: var(--text-low); padding: 0 2px; font-size: 9px; }
-  .add { margin-top: 8px; padding: 12px; border-radius: 10px; font-size: 12px; }
+  .x { color: var(--text-low); padding: 0 2px; font-size: 11px; }
+  .add { margin-top: 8px; padding: 12px; border-radius: 10px; font-size: 13px; }
+  .locked { margin: 0; padding: 10px 12px; border: 1px dashed var(--border-hi); border-radius: 10px; font-family: var(--f-sans);
+    font-size: 13px; line-height: 1.5; color: var(--text-mid); }
   .confirm { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 </style>

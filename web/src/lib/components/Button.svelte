@@ -21,7 +21,7 @@
   .secondary { background: transparent; color: var(--text); border: 1px solid var(--border-hi); }
   .ghost { background: transparent; color: var(--text); border: none; }
   .danger { background: transparent; color: var(--danger); border: 1px solid var(--border); }
-  .sm { padding: 8px 12px; font-size: 12px; }
+  .sm { padding: 8px 12px; font-size: 13px; }
   .md { padding: 12px 16px; font-size: 13px; }
   .lg { padding: 16px 20px; font-size: 14px; }
 </style>

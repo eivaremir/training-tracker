@@ -54,9 +54,10 @@
   .track::-webkit-scrollbar { display: none; }
   .slide { position: relative; flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; }
   .slide img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .map { gap: 6px; padding: 12px; background: var(--bg); }
-  .map :global(.fig) { height: 100%; flex: 0 1 auto; }
-  .map :global(svg) { height: 100%; width: auto; }
+  /* Sized from the slide box (container units), not percentage heights, which iOS Safari resolves differently. */
+  .map { gap: 6px; padding: 12px; background: var(--bg); container-type: size; }
+  .map :global(.fig) { flex: 0 0 auto; }
+  .map :global(svg) { width: min(110px, calc((100cqh - 24px) * 140 / 366), calc(50cqw - 15px)); height: auto; }
   .tag { position: absolute; left: 8px; top: 8px; padding: 3px 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.55); }
   .tag.muscles { background: var(--surface-hi); border: 1px solid var(--border); }
   .dots { position: absolute; bottom: 8px; left: 0; right: 0; display: flex; justify-content: center; gap: 6px; pointer-events: none; }

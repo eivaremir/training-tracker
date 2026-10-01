@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { routinesOn } from '$lib/plans';
   // Dashboard — aggregate progress across subscribed plans.
   import { goto } from '$app/navigation';
   import TopBar from '$lib/components/TopBar.svelte';
@@ -21,24 +22,23 @@
 
   const todayItems = $derived(store.itemsFor(today));
   const subscribed = $derived(store.plans.filter((p) => p.subscribed));
-  const done = (planId: string, date: string) => store.sessions.find((s) => s.planId === planId && s.date === date && s.logs.length);
+  const done = (planId: string, routineId: string, date: string) =>
+    store.sessions.find((s) => s.planId === planId && s.routineId === routineId && s.date === date && s.logs.length);
 
   const planStats = $derived(subscribed.map((p) => {
     let planned = 0, completed = 0, hit = 0, sets = 0;
-    const count = (date: string) => {
-      const s = done(p.id, date);
+    // Each scheduled routine counts once, so a day with two routines is two planned workouts.
+    const count = (key: string, date: string, past: boolean) => routinesOn(p, key).forEach((rid) => {
+      planned++;
+      const s = past ? done(p.id, rid, date) : undefined;
       if (!s) return;
       completed++; sets += s.logs.length; hit += s.logs.filter((l) => l.hitGoal).length;
-    };
+    });
     if (p.kind === 'weekly') {
-      WEEK_MON.forEach((d, i) => { if (p.days[d]) { planned++; count(ymd(addDays(monday, i))); } });
+      WEEK_MON.forEach((d, i) => count(d, ymd(addDays(monday, i)), true));
     } else {
       const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-      for (let d = 1; d <= lastDay; d++) {
-        if (!p.days[String(d)]) continue;
-        planned++;
-        if (d <= dom) count(ymd(new Date(today.getFullYear(), today.getMonth(), d)));
-      }
+      for (let d = 1; d <= lastDay; d++) count(String(d), ymd(new Date(today.getFullYear(), today.getMonth(), d)), d <= dom);
     }
     return { plan: p, planned, completed, completion: planned ? completed / planned : 0, goalPct: sets ? hit / sets : 0 };
   }));
@@ -72,7 +72,7 @@
   {/snippet}
 </TopBar>
 
-<div class="page">
+<div class="page r-cols">
   {#if todayItems.length}
     <div class="today">
       <div class="between" style="margin-bottom:10px">
@@ -83,7 +83,7 @@
         {#each todayItems as { plan, routine } (plan.id + routine.id)}
           {@const s = store.sessionFor(plan.id, routine.id, todayStr)}
           {@const total = routine.exercises.reduce((n, e) => n + e.goals.length, 0)}
-          <button class="item" onclick={() => goto(`/today?plan=${plan.id}`)}>
+          <button class="item" onclick={() => goto(`/today?plan=${plan.id}&routine=${routine.id}`)}>
             <div style="flex:1;min-width:0">
               <div class="cond" style="font-size:18px">{routine.name}</div>
               <Label size={9} color="var(--text-low)">{plan.name} · {routine.exercises.length} ex · {total} sets</Label>
@@ -177,12 +177,12 @@
   .item { width: 100%; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
     display: flex; align-items: center; gap: 12px; cursor: pointer; text-align: left; color: var(--text); }
   .progress-pill { padding: 6px 10px; background: var(--text); color: var(--bg); border-radius: 6px; font-family: var(--f-cond); font-weight: 600;
-    font-size: 11px; letter-spacing: 1px; text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
+    font-size: 12px; letter-spacing: 1px; text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
   .rest { background: var(--surface); border: 1px dashed var(--border); border-radius: 14px; padding: 18px; text-align: center; }
   .rest div { margin-top: 6px; font-family: var(--f-sans); font-size: 13px; color: var(--text-mid); }
   .strip { display: flex; align-items: flex-end; gap: 4px; height: 50px; }
   .strip div { flex: 1; height: 36px; border-radius: 3px; }
-  .manage { color: var(--text-mid); font-family: var(--f-mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+  .manage { color: var(--text-mid); font-family: var(--f-mono); font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
     display: flex; align-items: center; gap: 4px; text-decoration: none; }
   .plan { width: 100%; padding: 14px; display: flex; flex-direction: column; gap: 10px; text-decoration: none; color: var(--text); }
   .slash { color: var(--text-low); padding: 0 3px; font-family: var(--f-cond); }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Read-only heat map of training load over the last N days.
+  // Read-only heat map of training load (weight × reps) over the last N days.
   import Label from './Label.svelte';
   import BigNum from './BigNum.svelte';
   import BodyFigure from './BodyFigure.svelte';
@@ -7,6 +7,7 @@
   import { heatColor } from '../heat';
   import { addDays, ymd } from '../dates';
   import { store } from '../store.svelte';
+  import { toUnit, unit, latestBodyKg, isBodyweight } from '../units';
 
   let { days = 7 }: { days?: number } = $props();
   let hover = $state<string | null>(null);
@@ -15,7 +16,9 @@
     const cut = ymd(addDays(store.today, -(days - 1)));
     const today = store.todayStr;
     const logs = store.sessions.filter((s) => s.date >= cut && s.date <= today).flatMap((s) => s.logs).filter((l) => l.actual);
-    const score: Record<string, number> = {}, groupSets: Record<string, number> = {};
+    const score: Record<string, number> = {}, groupVol: Record<string, number> = {};
+    const bodyKg = latestBodyKg() ?? 0;
+    let total = 0;
     const credit = (id: string, w: number) => {
       const hs = childrenOf(id);
       (hs.length ? hs : [id]).forEach((h) => (score[h] = (score[h] || 0) + w));
@@ -23,25 +26,40 @@
     logs.forEach((l) => {
       const ex = store.exercise(l.exerciseId);
       if (!ex?.muscles) return;
-      ex.muscles.primary.forEach((id) => credit(id, 1));
-      ex.muscles.secondary.forEach((id) => credit(id, 0.5));
-      [...new Set(ex.muscles.primary.map((id) => PARENT[id] || id))].forEach((g) => (groupSets[g] = (groupSets[g] || 0) + 1));
+      // Bodyweight sets logged as 0 move the lifter's own weight (latest weigh-in).
+      const kg = l.actual!.weight || (isBodyweight(ex.equipment) ? bodyKg : 0);
+      const vol = kg * l.actual!.reps;
+      if (!vol) return;
+      total += vol;
+      ex.muscles.primary.forEach((id) => credit(id, vol));
+      ex.muscles.secondary.forEach((id) => credit(id, vol * 0.5));
+      [...new Set(ex.muscles.primary.map((id) => PARENT[id] || id))].forEach((g) => (groupVol[g] = (groupVol[g] || 0) + vol));
     });
     const max = Math.max(1, ...Object.values(score));
-    const top = Object.entries(groupSets).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const untrained = Object.keys(MUSCLES).filter((g) => !PARENT[g] && !groupSets[g] && !childrenOf(g).some((c) => score[c]) && !score[g]);
-    return { logs, score, max, top, topMax: top[0]?.[1] || 1, untrained };
+    const top = Object.entries(groupVol).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const untrained = Object.keys(MUSCLES).filter((g) => !PARENT[g] && !groupVol[g] && !childrenOf(g).some((c) => score[c]) && !score[g]);
+    return { logs, total, score, max, top, topMax: top[0]?.[1] || 1, untrained };
   });
 
+  // Volume in the display unit, compact: 950 lb, 12.4k lb.
+  const fmtVol = (kg: number) => {
+    const v = toUnit(kg, 0);
+    return v >= 10000 ? `${Math.round(v / 1000)}k` : v >= 1000 ? `${(v / 1000).toFixed(1).replace('.0', '')}k` : String(Math.round(v));
+  };
+  // Share of everything lifted in the window that worked this muscle (secondary work counts half).
+  const pct = (kg: number) => (stats.total ? Math.round((kg / stats.total) * 100) : 0);
   const heat = (id: string) => (stats.score[id] ? heatColor(0.12 + (0.88 * stats.score[id]) / stats.max) : 'var(--surface-hihi)');
 </script>
 
 <div class="card box">
   <div class="head">
     <Label>Muscle load · {days} days</Label>
-    <Label size={9} color={hover ? 'var(--text)' : 'var(--text-low)'}>
-      {hover ? `${MUSCLES[hover]} · ${(stats.score[hover] || 0).toFixed(1).replace('.0', '')} sets` : `${stats.logs.length} sets logged`}
-    </Label>
+    <Label size={9} color="var(--text-low)">{fmtVol(stats.total)} {unit()} lifted</Label>
+  </div>
+  <!-- Fixed-height line so the figures don't jump while hovering. -->
+  <div class="detail" aria-live="polite">
+    {#if hover}<Label size={9} color="var(--text)">{MUSCLES[hover]} · {fmtVol(stats.score[hover] || 0)} {unit()} · {pct(stats.score[hover] || 0)}% of load</Label>
+    {:else}<Label size={9} color="var(--text-low)">Hover or tap a muscle</Label>{/if}
   </div>
   <div class="figs">
     <BodyFigure shapes={SHAPES.advanced.front} label="Front" fill={heat} bind:hover />
@@ -58,7 +76,8 @@
         <div class="bar-row">
           <span class="name">{MUSCLES[g]}</span>
           <div class="track"><div style:width="{(n / stats.topMax) * 100}%" style:background={heatColor(0.3 + (0.7 * n) / stats.topMax)}></div></div>
-          <span class="n"><BigNum size={16}>{n}</BigNum></span>
+          <span class="n"><BigNum size={16}>{fmtVol(n)}</BigNum><span class="u">{unit()}</span></span>
+          <span class="p">{pct(n)}%</span>
         </div>
       {/each}
     </div>
@@ -71,15 +90,18 @@
 <style>
   .box { padding: 14px; }
   .head { display: flex; align-items: baseline; justify-content: space-between; }
-  .figs { margin-top: 10px; display: flex; gap: 4px; }
+  .detail { height: 16px; margin-top: 4px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .figs { margin-top: 6px; display: flex; gap: 4px; }
   .scale { margin-top: 10px; display: flex; align-items: center; gap: 8px; }
-  .scale span { font-family: var(--f-mono); font-size: 9px; color: var(--text-low); letter-spacing: 1px; }
+  .scale span { font-family: var(--f-mono); font-size: 11px; color: var(--text-low); letter-spacing: 1px; }
   .scale div { flex: 1; height: 6px; border-radius: 3px; }
   .top { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
-  .bar-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) 28px; align-items: center; gap: 10px; }
-  .name { font-family: var(--f-sans); font-size: 12px; color: var(--text); }
+  .bar-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) 72px 34px; align-items: center; gap: 10px; }
+  .name { font-family: var(--f-sans); font-size: 13px; color: var(--text); }
   .track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
   .track div { height: 100%; }
-  .n { text-align: right; }
+  .n { text-align: right; white-space: nowrap; }
+  .p { text-align: right; font-family: var(--f-mono); font-size: 12px; color: var(--text-mid); }
+  .u { margin-left: 3px; font-family: var(--f-mono); font-size: 11px; color: var(--text-low); }
   .untrained { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
 </style>

@@ -56,8 +56,9 @@ export interface Plan {
   kind: PlanKind;
   subscribed: boolean;
   startedAt: string | null;
-  /** weekly: keys mon..sun; monthly: keys "1".."31". Value = routineId or null (rest). */
-  days: Record<string, ID | null>;
+  /** weekly: keys mon..sun; monthly: keys "1".."31". Value = routine ids in order (empty/null = rest).
+   *  A single id is the pre-multi-routine form; read it through `routinesOn`. */
+  days: Record<string, ID[] | ID | null>;
 }
 
 export interface SetLog {
@@ -96,6 +97,8 @@ export interface Reminders {
   start: string; // "HH:MM"
   end: string;
   everyHours: number;
+  /** Step in minutes (30 = every half hour); preferred over everyHours when set. */
+  everyMinutes?: number | null;
   onlyWhenDue: boolean;
   timezone: string;
 }
@@ -105,6 +108,8 @@ export interface Settings {
   aiProvider: 'bedrock' | 'anthropic' | null;
   aiModel: string | null;
   reminders: Reminders;
+  /** Display unit; stored weights are always kg. */
+  unit?: 'kg' | 'lb' | null;
 }
 
 export interface AppState {

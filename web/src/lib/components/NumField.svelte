@@ -20,5 +20,5 @@
   button { width: 32px; height: 48px; flex-shrink: 0; background: transparent; border: none; color: var(--text); font-size: 18px; cursor: pointer; }
   input { flex: 1; min-width: 0; width: 0; background: transparent; border: none; outline: none; color: var(--text); text-align: center;
     font-family: var(--f-cond); font-weight: 600; font-size: 20px; font-variant-numeric: tabular-nums; padding: 0; }
-  span { color: var(--text-low); font-family: var(--f-mono); flex-shrink: 0; font-size: 9px; padding-right: 6px; letter-spacing: 1px; text-transform: uppercase; }
+  span { color: var(--text-low); font-family: var(--f-mono); flex-shrink: 0; font-size: 11px; padding-right: 6px; letter-spacing: 1px; text-transform: uppercase; }
 </style>

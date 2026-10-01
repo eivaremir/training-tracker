@@ -1,3 +1,4 @@
+import { routinesOn, dayKey } from './plans';
 // Demo data used in offline mode (no VITE_API_URL). History is generated relative to today.
 import type { AppState, Exercise, Plan, Routine, Session, SetGoal, SetLog, WeightEntry } from './types';
 import { WEEKDAYS, addDays, ymd } from './dates';
@@ -57,11 +58,11 @@ export function buildMock(today = new Date()): AppState {
   for (let off = 0; off < 29; off++) {
     const d = addDays(start, off);
     if (ymd(d) >= ymd(today)) break;
-    plans.filter((p) => p.subscribed).forEach((p, ci) => {
-      const rid = p.kind === 'weekly' ? p.days[WEEKDAYS[d.getDay()]] : p.days[String(d.getDate())];
-      if (!rid || Math.random() < 0.15) return;
-      const r = routines.find((x) => x.id === rid)!;
-      const id = `s_${off}_${ci}`;
+    plans.filter((p) => p.subscribed).forEach((p, ci) => routinesOn(p, dayKey(p, d, WEEKDAYS)).forEach((rid, ri) => {
+      if (Math.random() < 0.15) return;
+      const r = routines.find((x) => x.id === rid);
+      if (!r) return;
+      const id = `s_${off}_${ci}_${ri}`;
       const logs: SetLog[] = [];
       r.exercises.forEach((rex) =>
         rex.goals.forEach((g0, i) => {
@@ -79,7 +80,7 @@ export function buildMock(today = new Date()): AppState {
       );
       const t0 = new Date(d); t0.setHours(18);
       sessions.push({ id, planId: p.id, routineId: rid, date: ymd(d), startedAt: t0.toISOString(), endedAt: logs[logs.length - 1].loggedAt, logs });
-    });
+    }));
   }
 
   // ~60 days of weigh-ins every 2-3 days, trending down with day-to-day noise.

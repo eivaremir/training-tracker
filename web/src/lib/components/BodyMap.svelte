@@ -71,7 +71,7 @@
   .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .seg button { padding: 5px 10px; border: none; cursor: pointer; background: transparent; color: var(--text-mid);
-    font-family: var(--f-cond); font-weight: 600; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+    font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
   .seg button.on { background: var(--text); color: var(--bg); }
   .stage { position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 26px 8px 10px; display: flex; gap: 4px; }
   .hint { position: absolute; top: 8px; left: 0; right: 0; text-align: center; }
@@ -80,6 +80,6 @@
   .legend i { width: 10px; height: 10px; border-radius: 2px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip { padding: 4px 8px; border-radius: 4px; cursor: pointer; background: transparent; color: var(--text); border: 1px solid var(--border-hi);
-    font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 0.8px; text-transform: uppercase; }
+    font-family: var(--f-cond); font-weight: 600; font-size: 13px; letter-spacing: 0.8px; text-transform: uppercase; }
   .chip.p { background: var(--text); color: var(--bg); border-color: var(--text); }
 </style>

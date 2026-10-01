@@ -2,7 +2,7 @@
 :root, :root[data-theme='dark'] {
   --bg: #0a0a0a; --surface: #141414; --surface-hi: #1c1c1c; --surface-hihi: #262626;
   --border: #262626; --border-hi: #404040;
-  --text: #fafafa; --text-mid: #a3a3a3; --text-low: #525252;
+  --text: #fafafa; --text-mid: #c7c7c7; --text-low: #8f8f8f;
   --danger: #dc2626; --mid: #737373; --dim: #404040;
   --stripe-a: #1c1c1c; --stripe-b: #141414; --log-hit: #1f1f1f; --log-miss: #181818;
   --glow: 250, 250, 250; --overlay: rgba(0, 0, 0, 0.6); --shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
@@ -11,7 +11,7 @@
 :root[data-theme='light'] {
   --bg: #f5f5f5; --surface: #ffffff; --surface-hi: #f0f0f0; --surface-hihi: #e5e5e5;
   --border: #e5e5e5; --border-hi: #c4c4c4;
-  --text: #0a0a0a; --text-mid: #525252; --text-low: #737373;
+  --text: #0a0a0a; --text-mid: #3d3d3d; --text-low: #5c5c5c;
   --danger: #dc2626; --mid: #8a8a8a; --dim: #d4d4d4;
   --stripe-a: #ececec; --stripe-b: #f7f7f7; --log-hit: #ebebeb; --log-miss: #f5f5f5;
   --glow: 10, 10, 10; --overlay: rgba(0, 0, 0, 0.3); --shadow: 0 12px 36px rgba(0, 0, 0, 0.15);
@@ -43,7 +43,7 @@ input, button { -webkit-tap-highlight-color: transparent; }
 .kpi-grid > div { background: var(--surface); }
 .suffix { color: var(--text-mid); font-family: var(--f-cond); }
 .chip-kind { padding: 2px 6px; background: var(--bg); color: var(--text-mid); border: 1px solid var(--border);
-  border-radius: 4px; font-family: var(--f-mono); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
+  border-radius: 4px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
 .dashed-btn { width: 100%; padding: 14px 12px; background: transparent; border: 1px dashed var(--border-hi);
   border-radius: 12px; color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center;
   gap: 8px; font-family: var(--f-cond); font-weight: 600; font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; }
@@ -55,8 +55,28 @@ input, button { -webkit-tap-highlight-color: transparent; }
 .seg-tabs button span { color: var(--text-low); margin-left: 4px; }
 .mini-btn { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
   color: var(--text); cursor: pointer; display: flex; align-items: center; gap: 4px;
-  font-family: var(--f-cond); font-weight: 600; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+  font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
 .list-btn { padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
   color: var(--text); cursor: pointer; text-align: left; display: flex; align-items: center; gap: 12px; }
 .body-copy { font-family: var(--f-sans); font-size: 14px; color: var(--text); line-height: 1.5; }
 .row { display: flex; gap: 10px; }
+
+/* iOS draws date/time inputs with a native minimum width that overflows narrow layouts. */
+input[type='date'], input[type='time'] {
+  -webkit-appearance: none; appearance: none; box-sizing: border-box;
+  min-width: 0; max-width: 100%; min-height: 40px;
+}
+input[type='date']::-webkit-date-and-time-value,
+input[type='time']::-webkit-date-and-time-value { text-align: left; }
+
+@keyframes tt-pop { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: none; } }
+
+/* Responsive layout. Phones in portrait get the single column the design was drawn for; from 720px wide
+   (landscape phones, tablets, desktop) pages spread into columns. !important beats the pages' scoped flex columns. */
+@media (min-width: 720px) {
+  .r-cols { display: block !important; columns: 360px 3; column-gap: 14px; }
+  .r-cols > * { break-inside: avoid; margin: 0 0 14px; }
+  .r-grid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-items: start; }
+  .r-grid > .r-flat { margin-top: 0 !important; }
+  .r-grid > .dashed-btn, .r-grid > .empty, .r-grid > p { grid-column: 1 / -1; }
+}

@@ -3,29 +3,32 @@
   import BigNum from './BigNum.svelte';
   import NumField from './NumField.svelte';
   import Button from './Button.svelte';
+  import BodyweightPresets from './BodyweightPresets.svelte';
   import type { SetGoal } from '../types';
+  import { unit, toUnit, keepOrConvert, liftStep, meetsGoal, fmtWeight } from '../units';
 
-  let { goal, onsave, onskip }: { goal: SetGoal; onsave: (a: { reps: number; weight: number }) => void; onskip: () => void } = $props();
+  let { goal, equipment, onsave, onskip }: { goal: SetGoal; equipment?: string[]; onsave: (a: { reps: number; weight: number }) => void; onskip: () => void } = $props();
   // svelte-ignore state_referenced_locally
   let reps = $state(goal.reps);
   // svelte-ignore state_referenced_locally
-  let weight = $state(goal.weight);
+  let weight = $state(toUnit(goal.weight));
 </script>
 
 <div class="wrap">
   <div class="goal">
     <Label>Goal</Label>
     <div>
-      <BigNum size={22}>{goal.reps}</BigNum><span class="x">×</span><BigNum size={22}>{goal.weight}</BigNum><Label size={9}> kg</Label>
+      <BigNum size={22}>{goal.reps}</BigNum><span class="x">×</span><BigNum size={22}>{toUnit(goal.weight)}</BigNum><Label size={9}> {unit()}</Label>
     </div>
   </div>
   <div class="row">
     <NumField label="Reps" bind:value={reps} suffix="reps" />
-    <NumField label="Weight" bind:value={weight} suffix="kg" step={2.5} />
+    <NumField label="Weight" bind:value={weight} suffix={unit()} step={liftStep()} />
   </div>
+  <BodyweightPresets {equipment} bind:value={weight} />
   <div class="row">
     <Button variant="secondary" full onclick={onskip}>Skip set</Button>
-    <Button full onclick={() => onsave({ reps, weight })}>Save</Button>
+    <Button full onclick={() => onsave({ reps, weight: keepOrConvert(goal.weight, weight) })}>Save</Button>
   </div>
 </div>
 

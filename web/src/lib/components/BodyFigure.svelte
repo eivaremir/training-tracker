@@ -29,5 +29,6 @@
 
 <style>
   .fig { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  svg { width: 100%; display: block; }
+  /* Explicit ratio: WebKit can't derive an SVG's width from a percentage height without it. */
+  svg { width: 100%; height: auto; aspect-ratio: 140 / 366; display: block; }
 </style>

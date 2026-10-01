@@ -27,7 +27,7 @@ done
 
 check_prereqs
 BUCKET="$(artifact_bucket)"
-aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null || die "Artifact bucket s3://$BUCKET not found. Run scripts/bootstrap.sh first."
+aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1 || die "Artifact bucket s3://$BUCKET not found. Run scripts/bootstrap.sh first."
 
 APP_ID="$(amplify_app_id)"
 if [[ -z "${CORS_ORIGINS:-}" ]]; then

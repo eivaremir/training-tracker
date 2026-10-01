@@ -20,7 +20,7 @@ fi
 APP_ID="$(amplify_app_id)"
 if [[ -n "$APP_ID" ]]; then
   ORIGIN="$(amplify_origin "$APP_ID")"
-  LAST="$(aws amplify list-jobs --app-id "$APP_ID" --branch-name "$AMPLIFY_BRANCH" --max-items 1 \
+  LAST="$(aws amplify list-jobs --app-id "$APP_ID" --branch-name "$AMPLIFY_BRANCH" --max-results 1 --no-paginate \
     --query 'jobSummaries[0].[status, endTime]' --output text 2>/dev/null || echo 'no deployments')"
   echo "$(bold Web)         $ORIGIN · last deploy: $LAST"
 else
@@ -28,4 +28,4 @@ else
 fi
 
 BUCKET="$(artifact_bucket)"
-if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then echo "$(bold Artifacts)   s3://$BUCKET"; else echo "$(bold Artifacts)   not created"; fi
+if aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then echo "$(bold Artifacts)   s3://$BUCKET"; else echo "$(bold Artifacts)   not created"; fi
