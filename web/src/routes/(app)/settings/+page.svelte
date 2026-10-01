@@ -15,6 +15,12 @@
   import { buildDate, checkForUpdate } from '$lib/update';
   import { unit, toUnit, keepOrConvert, type Unit } from '$lib/units';
   import { disablePush, enablePush, pushStatus, sendTestPush, type PushStatus } from '$lib/push';
+  import { install, isIos, promptInstall } from '$lib/install.svelte';
+
+  // ---- Install ----
+  const ios = isIos();
+  let installDismissed = $state(false);
+  async function installApp() { installDismissed = !(await promptInstall()); }
 
   // ---- AI ----
   let provider = $state(store.settings.aiProvider);
@@ -159,6 +165,21 @@
 </TopBar>
 
 <div class="page r-cols">
+  <!-- Install (hidden once running as the installed app) -->
+  {#if !install.installed && (install.canPrompt || ios || installDismissed)}
+    <section class="card sec" id="install">
+      <div class="head"><Icon name="download" size={14} /><Label>Install app</Label></div>
+      <p class="muted">Add Training Tracker to your home screen or dock. It opens in its own window, starts faster and can send routine reminders.</p>
+      {#if install.canPrompt}
+        <Button full icon="download" onclick={installApp}>Install</Button>
+      {:else if ios}
+        <p class="fine">Tap Share, then Add to Home Screen.</p>
+      {:else}
+        <p class="fine">You can install it any time from your browser's menu.</p>
+      {/if}
+    </section>
+  {/if}
+
   <!-- Units -->
   <section class="card sec" id="units">
     <div class="between">

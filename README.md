@@ -120,6 +120,14 @@ Known trade-offs: tokens can't be revoked before they expire (rotate the secret 
 - **Body weight**: log weigh-ins, set a goal, see the trend on Stats and progress on Home.
 - **Library**: browse by equipment, then muscle group, as cards (swipe from demo photos to the muscle map) or as a searchable list.
 
+## Installable app (PWA)
+
+- **Install**: Settings → Install app opens the browser's install dialog (Chrome, Edge, Android) or explains Share → Add to Home Screen on iPhone and iPad. The card hides once the app runs installed.
+- **Manifest** (`web/static/manifest.webmanifest`): any and maskable icons, shortcuts for Today, Log and Stats (long-press the app icon), and store screenshots for the richer install dialog.
+- **iOS**: Home Screen icon, a dark launch screen per iPhone/iPad size and orientation (instead of a white flash), and a full-screen status bar.
+- **Service worker** (`web/src/service-worker.ts`): caches each deploy's files and the Google Fonts so the app shell opens offline, and shows reminders with a monochrome Android badge. Launch screens and screenshots aren't precached.
+- **Images**: `npm --prefix web run pwa-assets` regenerates the icons, `favicon.ico`, badge, shortcut icons and launch screens from the SVG marks (and the `<link rel="apple-touch-startup-image">` block in `src/app.html`). Add `-- --screenshots` to recapture the store screenshots from a demo-mode build. It needs a Chromium-based browser (Chrome, Chromium, Edge or Brave; or set `CHROME=/path`).
+
 ## Exercise catalog
 
 **Library → Catalog** lets users browse 876 exercises and copy any of them into their own library. Each entry has step-by-step instructions, start/finish photos, primary and secondary muscles, equipment, level and category.

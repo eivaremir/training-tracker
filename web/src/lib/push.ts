@@ -1,10 +1,8 @@
 // Web Push: permission, subscription and server registration for routine reminders.
 import { api } from './api';
+import { isIos, isStandalone } from './install.svelte';
 
 export type PushStatus = 'unsupported' | 'needs-install' | 'default' | 'denied' | 'granted';
-
-const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
-const isStandalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
 export function pushStatus(): PushStatus {
   if (typeof window === 'undefined') return 'unsupported';

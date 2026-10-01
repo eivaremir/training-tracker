@@ -3,12 +3,14 @@
   import type { Snippet } from 'svelte';
   import { updated } from '$app/state';
   import { checkForUpdate } from '$lib/update';
+  import { watchInstall } from '$lib/install.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { store } from '$lib/store.svelte';
 
   let { children }: { children: Snippet } = $props();
 
   try { store.theme = (localStorage.getItem('tt-theme') as 'dark' | 'light') || 'dark'; } catch { /* private mode */ }
+  watchInstall();
   // A new deploy installs a new service worker; reload once so this tab runs the new version.
   $effect(() => {
     if (!('serviceWorker' in navigator)) return;
