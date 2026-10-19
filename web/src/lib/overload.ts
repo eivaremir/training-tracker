@@ -8,14 +8,19 @@
 // Every printed number (the "% vs last" and the last → target volumes) is derived from the volume that suggestion
 // actually produces, so they always reconcile even when the last session's sets differ from today's goals.
 // The last session is last week's on a weekly plan. Volume is counted as on the charts (lib/volume.ts).
+//
+// Exception — double progression: for a loaded lift whose last session's working sets were already high-rep
+// (averaging HIGH_REPS+), piling on more reps is the wrong move; the tip instead says to add one plate and reset
+// toward the plan's rep goal. That path is about intensity (load per rep), not total volume, so it shows a concrete
+// reps×weight before→after rather than a volume "% vs last".
 import { store } from './store.svelte';
-import { fmtWeight, isBodyweight, latestBodyKg, toUnit, unit } from './units';
-import { fmtVol, setVolumeKg, tracksVolume } from './volume';
+import { fmtWeight, isBodyweight, latestBodyKg, liftStep, toUnit, unit } from './units';
+import { fmtVol, setVolumeKg, setWeightKg, tracksVolume } from './volume';
 import { parseYmd } from './dates';
 import type { SetGoal } from './types';
 
 export type OverloadTip = {
-  kind: 'reps' | 'set' | 'covered';
+  kind: 'reps' | 'set' | 'covered' | 'weight';
   momentum: boolean;
   /** Why: the recent trend. */
   lead: string;
@@ -33,15 +38,21 @@ const pct = (x: number) => `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`;
 const abs = (x: number) => `${Math.abs(Math.round(x * 100))}%`;
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
 
-/** The exercise's volume per training day before `today`, newest first (days with no load left out). */
+/** The exercise's volume and per-set loads per training day before `today`, newest first (days with no load left out). */
 function pastDays(exerciseId: string, today: string) {
   const ex = store.exercise(exerciseId), bodyKg = latestBodyKg() ?? 0;
-  const byDate = new Map<string, number>();
+  const byDate = new Map<string, { kg: number; sets: { reps: number; kg: number }[] }>();
   for (const s of store.sessions) {
     if (s.date >= today) continue;
-    for (const l of s.logs) if (l.exerciseId === exerciseId && l.actual) byDate.set(s.date, (byDate.get(s.date) ?? 0) + setVolumeKg(l, ex, bodyKg));
+    for (const l of s.logs) {
+      if (l.exerciseId !== exerciseId || !l.actual) continue;
+      const d = byDate.get(s.date) ?? { kg: 0, sets: [] };
+      d.kg += setVolumeKg(l, ex, bodyKg);
+      d.sets.push({ reps: l.actual.reps, kg: setWeightKg(l, ex, bodyKg) });
+      byDate.set(s.date, d);
+    }
   }
-  return [...byDate].filter(([, kg]) => kg > 0).sort((a, b) => b[0].localeCompare(a[0])).map(([date, kg]) => ({ date, kg }));
+  return [...byDate].filter(([, d]) => d.kg > 0).sort((a, b) => b[0].localeCompare(a[0])).map(([date, d]) => ({ date, ...d }));
 }
 
 export function overloadTip(exerciseId: string, goals: SetGoal[], today = store.todayStr): OverloadTip | null {
@@ -59,6 +70,40 @@ export function overloadTip(exerciseId: string, goals: SetGoal[], today = store.
 
   const momentum = !!before && last.kg >= before.kg;
   const trend = before ? last.kg / before.kg - 1 : 0;
+
+  // Double progression: when last session's loaded sets already averaged a high rep count, the obvious next step is
+  // heavier weight, not yet more reps. Only for loaded lifts — a bodyweight move (no external plate to add) keeps the
+  // reps/extra-set advice below. HIGH_REPS = 15 catches a hypertrophy/endurance plateau; 20+ is well past any range.
+  const HIGH_REPS = 15;
+  const workSets = last.sets.filter((s) => s.kg > 0); // the loaded working sets
+  const avgReps = workSets.length ? workSets.reduce((n, s) => n + s.reps, 0) / workSets.length : 0;
+  if (!bw && workSets.length && avgReps >= HIGH_REPS) {
+    const lastRepsNum = Math.round(avgReps);
+    const repsVary = workSets.some((s) => s.reps !== workSets[0].reps);
+    const lastReps = `${repsVary ? '~' : ''}${lastRepsNum}`;
+    // Add one plate to the heaviest load actually proven (last session's top set, never below today's planned top).
+    const topW = Math.max(...workSets.map((s) => s.kg));
+    const wUnit = (d: number) => `${+d.toFixed(1)} ${unit()}`;
+    const lastW = wUnit(toUnit(topW, 1));
+    const newW = wUnit(toUnit(Math.max(topW, maxW), 1) + liftStep());
+    // Reset toward the plan's own rep goal (the low end of the range they've outgrown); if that isn't actually fewer
+    // reps than they just did, keep the rep count and warn it may dip under the heavier load.
+    const goalReps = goals.reduce((a, b) => (kgOf(b) > kgOf(a) ? b : a)).reps;
+    const dip = goalReps >= lastRepsNum;
+    const newReps = dip ? lastRepsNum : goalReps;
+    const stepTxt = `${liftStep()} ${unit()}`;
+    const action = dip
+      ? `Add ${stepTxt}: keep ~${newReps} reps at ${newW} (they may dip).`
+      : `Add ${stepTxt}: aim ~${newReps}×${newW}.`;
+    return {
+      kind: 'weight',
+      momentum,
+      lead: `${lastReps} reps a set last time — ready to go heavier`,
+      action,
+      detail: `${fmtDate(last.date)}: ${lastReps}×${lastW} → ~${newReps}×${newW}`
+    };
+  }
+
   const step = momentum ? Math.min(MAX_STEP, Math.max(DEFAULT_HI, trend)) : DEFAULT_LO;
   const target = last.kg * (1 + step);
 

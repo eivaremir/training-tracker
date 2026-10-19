@@ -12,7 +12,7 @@
 {#if tip}
   <div class="tip" class:momentum={tip.momentum}>
     <div class="meta">
-      <span class="tag"><Icon name={tip.momentum ? 'flame' : 'chart'} size={11} />{tip.kind === 'set' ? 'Extra set' : tip.kind === 'covered' ? 'On track' : 'Overload'}</span>
+      <span class="tag"><Icon name={tip.kind === 'weight' ? 'dumbbell' : tip.momentum ? 'flame' : 'chart'} size={11} />{tip.kind === 'set' ? 'Extra set' : tip.kind === 'covered' ? 'On track' : tip.kind === 'weight' ? 'Add weight' : 'Overload'}</span>
       <Label size={8} color="var(--text-low)">{tip.lead}</Label>
     </div>
     <div class="action">{tip.action}</div>
