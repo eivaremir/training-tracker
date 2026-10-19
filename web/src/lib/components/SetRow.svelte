@@ -5,9 +5,10 @@
   import Label from './Label.svelte';
   import type { SetGoal, SetLog } from '../types';
   import { unit, toUnit, keepOrConvert, liftStep, meetsGoal, fmtWeight } from '../units';
+  import type { Outcome } from '../pr';
 
-  let { idx, goal, log, isActive, onhit, onedit, onundo }: {
-    idx: number; goal: SetGoal; log?: SetLog; isActive: boolean;
+  let { idx, goal, log, isActive, outcome = 'pending', onhit, onedit, onundo }: {
+    idx: number; goal: SetGoal; log?: SetLog; isActive: boolean; outcome?: Outcome;
     onhit: () => void; onedit: () => void; onundo: () => void;
   } = $props();
 
@@ -18,6 +19,15 @@
   const logged = $derived(!!log);
   const hit = $derived(!!log?.hitGoal);
   const intensity = $derived(Math.min(1, Math.abs(dx) / 80));
+
+  // PR / under-goal wash the logged row and get a left accent stripe; other states keep the plain log tints.
+  const bg = $derived(
+    !logged ? (isActive ? 'var(--surface-hi)' : 'var(--surface)')
+      : outcome === 'pr' ? 'color-mix(in srgb, var(--pr-1) 14%, var(--log-hit))'
+      : outcome === 'under' ? 'color-mix(in srgb, var(--danger) 13%, var(--log-miss))'
+      : hit ? 'var(--log-hit)' : 'var(--log-miss)'
+  );
+  const stripe = $derived(logged && outcome === 'pr' ? 'var(--pr-1)' : logged && outcome === 'under' ? 'var(--danger)' : null);
 
   const pointX = (e: PointerEvent) => e.clientX;
   function start(e: PointerEvent) {
@@ -59,7 +69,8 @@
   <div class="fg" role="button" tabindex={logged ? -1 : 0}
     aria-label="Set {idx + 1}: swipe right to log as hit, left to edit"
     onpointerdown={start} onpointermove={move} onpointerup={end} onpointercancel={end} onkeydown={key}
-    style:background={logged ? (hit ? 'var(--log-hit)' : 'var(--log-miss)') : isActive ? 'var(--surface-hi)' : 'var(--surface)'}
+    style:background={bg}
+    style:box-shadow={stripe ? `inset 4px 0 0 ${stripe}` : undefined}
     style:transform="translateX({dx}px)"
     style:transition={dragging ? 'none' : 'transform 0.18s cubic-bezier(0.2,0.9,0.3,1)'}
     style:cursor={logged ? 'default' : 'grab'}>
@@ -74,6 +85,11 @@
         </div>
         {#if !hit && log.actual && log.goalSnapshot}
           <Label size={9} color="var(--text-low)">goal {log.goalSnapshot.reps}×{toUnit(log.goalSnapshot.weight)}</Label>
+        {/if}
+        {#if outcome === 'pr'}
+          <span class="mark pr"><Icon name="flame" size={11} />PR</span>
+        {:else if outcome === 'under'}
+          <span class="mark under">Under</span>
         {/if}
       {:else}
         {@const c = isActive ? 'var(--text)' : 'var(--text-mid)'}
@@ -105,6 +121,11 @@
   .idx { width: 28px; text-align: center; flex-shrink: 0; font-family: var(--f-cond); font-weight: 700; font-size: 22px; font-variant-numeric: tabular-nums; }
   .vals { flex: 1; display: flex; align-items: baseline; gap: 14px; }
   .pair { display: flex; align-items: baseline; gap: 4px; }
+  .mark { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px; align-self: center;
+    font-family: var(--f-cond); font-weight: 700; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+  .mark.pr { background: var(--pr-1); color: #000; }
+  .mark.under { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); }
   .undo { width: 36px; height: 36px; border-radius: 18px; background: var(--surface-hi); color: var(--text-mid); border: 1px solid var(--border-hi);
     display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
   .undo.hit { background: var(--text); color: var(--bg); border: none; }

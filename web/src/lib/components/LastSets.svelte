@@ -7,9 +7,14 @@
   import { store } from '../store.svelte';
   import { unit, toUnit } from '../units';
   import { parseYmd } from '../dates';
+  import { exercisePR } from '../pr';
   import type { SetLog } from '../types';
 
   let { exerciseId, excludeSessionId, compact = false }: { exerciseId: string; excludeSessionId?: string; compact?: boolean } = $props();
+
+  // All-time PR standing, so a past set shows a medal when it still ranks in the exercise's top 3.
+  const pr = $derived(exercisePR(exerciseId));
+  const medalLabel = (r: 1 | 2 | 3) => (r === 1 ? 'all-time best' : r === 2 ? '2nd best ever' : '3rd best ever');
 
   // All of that day's sets (a plan session and an extra workout on the same day merge), in the order they were logged.
   const last = $derived.by(() => {
@@ -51,8 +56,12 @@
       </div>
       <div class="chips">
         {#each last.sets as l, i (i)}
-          <span class="chip" class:miss={missed(l)} class:skip={!l.actual}
-            title={l.goalSnapshot ? (l.hitGoal ? 'Hit goal' : `Missed · goal ${fmt(l.goalSnapshot, ' reps')}`) : undefined}>{setText(l)}</span>
+          {@const r = pr.rank(l)}
+          <span class="chip" class:miss={missed(l)} class:skip={!l.actual} class:medal={!!r}
+            style:--medal={r ? `var(--pr-${r})` : undefined}
+            title={r ? `Set PR · ${medalLabel(r)}` : l.goalSnapshot ? (l.hitGoal ? 'Hit goal' : `Missed · goal ${fmt(l.goalSnapshot, ' reps')}`) : undefined}>
+            {#if r}<span class="dot"></span>{/if}{setText(l)}
+          </span>
         {/each}
         <Label size={8} color="var(--text-low)">{loaded ? unit() : 'reps'}</Label>
       </div>
@@ -101,10 +110,14 @@
   .strip { margin-bottom: 8px; padding: 8px 12px; border: 1px dashed var(--border); border-radius: 12px; display: flex; flex-direction: column; gap: 6px; }
   .meta { display: flex; justify-content: space-between; gap: 8px; }
   .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-  .chip { padding: 2px 6px; border: 1px solid var(--border-hi); border-radius: 6px; color: var(--text);
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid var(--border-hi); border-radius: 6px; color: var(--text);
     font-family: var(--f-cond); font-weight: 600; font-size: 14px; letter-spacing: 0.3px; font-variant-numeric: tabular-nums; }
   .chip.miss { border-style: dashed; color: var(--text-mid); }
   .chip.skip { border-color: var(--border); color: var(--text-low); }
+  /* A top-3 all-time set: medal-tinted border + a filled dot (gold/silver/bronze via --medal). */
+  .chip.medal { border-color: var(--medal); border-style: solid;
+    background: color-mix(in srgb, var(--medal) 12%, transparent); color: var(--text); }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--medal); flex-shrink: 0; }
 
   .card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
   .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
