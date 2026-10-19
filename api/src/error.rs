@@ -10,6 +10,9 @@ pub enum ApiError {
     TooManyRequests(String),
     Conflict(String),
     Unavailable(String),
+    /// An upstream service (e.g. a Bedrock model) failed or rejected the request.
+    BadGateway(String),
+    GatewayTimeout(String),
     Internal(anyhow::Error),
 }
 
@@ -27,6 +30,8 @@ impl IntoResponse for ApiError {
             ApiError::TooManyRequests(m) => (StatusCode::TOO_MANY_REQUESTS, m),
             ApiError::Unavailable(m) => (StatusCode::SERVICE_UNAVAILABLE, m),
             ApiError::Conflict(m) => (StatusCode::CONFLICT, m),
+            ApiError::BadGateway(m) => (StatusCode::BAD_GATEWAY, m),
+            ApiError::GatewayTimeout(m) => (StatusCode::GATEWAY_TIMEOUT, m),
             ApiError::Internal(e) => {
                 tracing::error!(error = ?e, "internal error");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())

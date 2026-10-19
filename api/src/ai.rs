@@ -3,20 +3,44 @@
 //! Listed models are text-in/text-out, active, invocable on demand (directly or through a
 //! system inference profile) and already authorized for this account. Anthropic models are
 //! excluded on purpose: Claude is used through Anthropic's own API with the user's key instead.
+//!
+//! Models differ in what Converse accepts (Grok rejects `temperature`, Mistral 7B rejects system
+//! prompts, Llama 3 caps output at 2048 tokens). Grok also gets a low reasoning effort to stay
+//! inside API Gateway's 30 s limit. `review` drops whatever a model's
+//! ValidationException names, retries, and remembers the result per model.
+use crate::error::ApiError;
 use anyhow::{Context, Result};
 use aws_sdk_bedrock::types::{
     AuthorizationStatus, EntitlementAvailability, FoundationModelLifecycleStatus, InferenceProfileType, InferenceType,
     ModelModality, RegionAvailability,
 };
-use aws_sdk_bedrockruntime::types::{ContentBlock, ConversationRole, InferenceConfiguration, Message, SystemContentBlock};
+use aws_sdk_bedrockruntime::config::http::HttpResponse;
+use aws_sdk_bedrockruntime::config::timeout::TimeoutConfig;
+use aws_sdk_bedrockruntime::error::{DisplayErrorContext, SdkError};
+use aws_sdk_bedrockruntime::operation::converse::{ConverseError, ConverseOutput};
+use aws_sdk_bedrockruntime::types::{
+    ContentBlock, ConversationRole, InferenceConfiguration, Message, StopReason, SystemContentBlock,
+};
+use aws_smithy_types::Document;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 const CACHE_TTL: Duration = Duration::from_secs(3600);
 pub const MAX_PROMPT_CHARS: usize = 24_000;
 pub const DAILY_LIMIT: u32 = 30;
+/// Output budget. Reasoning models (Grok, GPT-OSS, DeepSeek R1…) spend most of it thinking before
+/// they answer: Grok 4.7 uses ~1.4k tokens on a typical day's review.
+const MAX_TOKENS: i32 = 4096;
+const TEMPERATURE: f32 = 0.4;
+/// API Gateway gives up on the Lambda after 30 s (the function's own timeout is 29 s); stop waiting
+/// for Bedrock before that so the client gets a readable error instead of a bare 5xx.
+const CONVERSE_TIMEOUT: Duration = Duration::from_secs(25);
+/// Grok always reasons (default effort "high"); "low" keeps Grok 4.7 nearer 20 s than 25+ s.
+const GROK_REASONING_EFFORT: &str = "low";
+
+type ConverseFailure = SdkError<ConverseError, HttpResponse>;
 
 const SYSTEM_PROMPT: &str = "You are an experienced strength and conditioning coach reviewing a user's training log. \
 Base every observation only on the data provided. Be specific and concise: what went well, what to watch, \
@@ -33,28 +57,78 @@ pub struct ModelInfo {
     pub provider: String,
 }
 
+/// What a model accepts in a Converse request, narrowed by its ValidationExceptions.
+#[derive(Debug, Clone, Copy)]
+struct Shape { temperature: bool, system: bool, max_tokens: i32, low_effort: bool }
+
+impl Shape {
+    fn new(model_id: &str) -> Self {
+        Self { temperature: true, system: true, max_tokens: MAX_TOKENS, low_effort: model_id.contains("xai.grok") }
+    }
+
+    /// Drops what a ValidationException complains about; false if it names nothing we can drop.
+    fn relax(&mut self, msg: &str) -> bool {
+        let m = msg.to_lowercase();
+        if self.low_effort && m.contains("reasoning_effort") {
+            self.low_effort = false;
+        } else if self.temperature && m.contains("temperature") {
+            self.temperature = false;
+        } else if self.system && m.contains("system message") {
+            self.system = false;
+        } else if let Some(limit) = token_limit(&m).filter(|&n| n > 0 && n < self.max_tokens) {
+            self.max_tokens = limit;
+        } else {
+            return false;
+        }
+        true
+    }
+}
+
+/// "The maximum tokens you requested exceeds the model limit of 2048. …" → 2048
+fn token_limit(msg: &str) -> Option<i32> {
+    if !msg.contains("maximum tokens") { return None; }
+    msg.split("limit of ").nth(1)?.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
+}
+
 pub struct Ai {
     control: aws_sdk_bedrock::Client,
     runtime: aws_sdk_bedrockruntime::Client,
     cache: Mutex<Option<(Instant, Vec<ModelInfo>)>>,
+    shapes: Mutex<HashMap<String, Shape>>,
+    /// Models Bedrock refused (access denied / not found); hidden until the next discovery.
+    broken: Mutex<HashSet<String>>,
 }
 
 impl Ai {
     pub fn new(conf: &aws_config::SdkConfig) -> Self {
+        let timeouts = TimeoutConfig::builder()
+            .connect_timeout(Duration::from_secs(3))
+            .operation_timeout(CONVERSE_TIMEOUT)
+            .build();
+        let runtime = aws_sdk_bedrockruntime::config::Builder::from(conf).timeout_config(timeouts).build();
         Self {
             control: aws_sdk_bedrock::Client::new(conf),
-            runtime: aws_sdk_bedrockruntime::Client::new(conf),
+            runtime: aws_sdk_bedrockruntime::Client::from_conf(runtime),
             cache: Mutex::new(None),
+            shapes: Mutex::new(HashMap::new()),
+            broken: Mutex::new(HashSet::new()),
         }
     }
 
     pub async fn models(&self) -> Result<Vec<ModelInfo>> {
-        if let Some((at, list)) = self.cache.lock().unwrap().as_ref() {
-            if at.elapsed() < CACHE_TTL { return Ok(list.clone()); }
-        }
-        let list = self.discover().await?;
-        *self.cache.lock().unwrap() = Some((Instant::now(), list.clone()));
-        Ok(list)
+        let cached = self.cache.lock().unwrap().as_ref()
+            .and_then(|(at, list)| (at.elapsed() < CACHE_TTL).then(|| list.clone()));
+        let list = match cached {
+            Some(list) => list,
+            None => {
+                let list = self.discover().await?;
+                *self.cache.lock().unwrap() = Some((Instant::now(), list.clone()));
+                self.broken.lock().unwrap().clear();
+                list
+            }
+        };
+        let broken = self.broken.lock().unwrap();
+        Ok(list.into_iter().filter(|m| !broken.contains(&m.id)).collect())
     }
 
     async fn discover(&self) -> Result<Vec<ModelInfo>> {
@@ -83,7 +157,9 @@ impl Ai {
             let lower = id.to_lowercase();
             let active = m.model_lifecycle().is_some_and(|l| *l.status() == FoundationModelLifecycleStatus::Active);
             let text_in = m.input_modalities().contains(&ModelModality::Text);
-            let special = ["embed", "rerank", "guard", "safeguard"].iter().any(|w| lower.contains(w));
+            // Not chat models: embeddings, rerankers, safety classifiers, speech-to-speech (Nova Sonic)
+            // and video understanding (TwelveLabs Pegasus); Converse can't run them on a text prompt.
+            let special = ["embed", "rerank", "guard", "safeguard", "sonic", "pegasus"].iter().any(|w| lower.contains(w));
             if provider.eq_ignore_ascii_case("anthropic") || !active || !text_in || special { continue; }
             let invoke_id = if m.inference_types_supported().contains(&InferenceType::OnDemand) {
                 id.clone()
@@ -116,17 +192,102 @@ impl Ai {
         Ok(models)
     }
 
-    pub async fn review(&self, model_id: &str, prompt: &str) -> Result<String> {
-        let out = self.runtime.converse()
-            .model_id(model_id)
-            .system(SystemContentBlock::Text(SYSTEM_PROMPT.into()))
-            .messages(Message::builder().role(ConversationRole::User).content(ContentBlock::Text(prompt.into())).build()?)
-            .inference_config(InferenceConfiguration::builder().max_tokens(1200).temperature(0.4).build())
-            .send().await.context("bedrock converse")?;
+    pub async fn review(&self, model_id: &str, prompt: &str) -> Result<String, ApiError> {
+        let mut shape = self.shapes.lock().unwrap().get(model_id).copied().unwrap_or_else(|| Shape::new(model_id));
+        // One retry per thing a model can reject (reasoning effort, temperature, system prompt, output budget).
+        let out = loop {
+            match self.converse(model_id, prompt, shape).await {
+                Ok(out) => break out,
+                Err(e) => {
+                    let msg = match e.as_service_error() {
+                        Some(ConverseError::ValidationException(v)) => v.message().unwrap_or_default(),
+                        _ => "",
+                    };
+                    if !shape.relax(msg) { return Err(self.converse_error(model_id, e)); }
+                    tracing::info!(model = model_id, ?shape, reason = msg, "retrying bedrock converse");
+                    self.shapes.lock().unwrap().insert(model_id.to_owned(), shape);
+                }
+            }
+        };
         let text = out.output().and_then(|o| o.as_message().ok())
             .map(|m| m.content().iter().filter_map(|c| c.as_text().ok()).cloned().collect::<Vec<_>>().join("\n"))
             .unwrap_or_default();
-        anyhow::ensure!(!text.trim().is_empty(), "model returned no text");
+        if text.trim().is_empty() {
+            tracing::warn!(model = model_id, stop_reason = ?out.stop_reason(), usage = ?out.usage(), "bedrock returned no text");
+            return Err(ApiError::BadGateway(match out.stop_reason() {
+                StopReason::MaxTokens => "The model used up its output budget before answering. Try again or pick another model.",
+                _ => "The model returned an empty answer. Try again or pick another model.",
+            }.into()));
+        }
         Ok(text)
+    }
+
+    async fn converse(&self, model_id: &str, prompt: &str, shape: Shape) -> Result<ConverseOutput, ConverseFailure> {
+        let text = if shape.system { prompt.to_owned() } else { format!("{SYSTEM_PROMPT}\n\n{prompt}") };
+        let message = Message::builder().role(ConversationRole::User).content(ContentBlock::Text(text)).build()
+            .expect("role and content are set");
+        let mut config = InferenceConfiguration::builder().max_tokens(shape.max_tokens);
+        if shape.temperature { config = config.temperature(TEMPERATURE); }
+        let mut req = self.runtime.converse().model_id(model_id).messages(message).inference_config(config.build());
+        if shape.system { req = req.system(SystemContentBlock::Text(SYSTEM_PROMPT.into())); }
+        if shape.low_effort {
+            req = req.additional_model_request_fields(Document::Object(HashMap::from([(
+                "reasoning_effort".to_owned(), Document::String(GROK_REASONING_EFFORT.into()),
+            )])));
+        }
+        req.send().await
+    }
+
+    /// Logs a failed Converse call and turns it into a message the user can act on.
+    fn converse_error(&self, model_id: &str, e: ConverseFailure) -> ApiError {
+        tracing::error!(model = model_id, error = %DisplayErrorContext(&e), "bedrock converse failed");
+        let Some(service) = e.as_service_error() else {
+            return match e {
+                SdkError::TimeoutError(_) => ApiError::GatewayTimeout(
+                    "The model took too long to answer. Try again or pick a faster model.".into()),
+                e => ApiError::Internal(anyhow::Error::new(e).context(format!("bedrock converse ({model_id})"))),
+            };
+        };
+        match service {
+            ConverseError::ThrottlingException(_) =>
+                ApiError::TooManyRequests("Amazon Bedrock is throttling this model. Wait a minute and try again.".into()),
+            ConverseError::ModelTimeoutException(_) =>
+                ApiError::GatewayTimeout("The model took too long to answer. Try again or pick a faster model.".into()),
+            ConverseError::ModelNotReadyException(_) | ConverseError::ServiceUnavailableException(_)
+            | ConverseError::InternalServerException(_) =>
+                ApiError::Unavailable("Amazon Bedrock can't run this model right now. Try again in a moment.".into()),
+            ConverseError::AccessDeniedException(_) | ConverseError::ResourceNotFoundException(_) => {
+                self.broken.lock().unwrap().insert(model_id.to_owned());
+                ApiError::BadGateway("Amazon Bedrock refused this model for this server. Pick another model.".into())
+            }
+            ConverseError::ValidationException(v) =>
+                ApiError::BadGateway(format!("The model rejected the request: {}", v.message().unwrap_or("invalid request"))),
+            ConverseError::ModelErrorException(v) =>
+                ApiError::BadGateway(format!("The model failed: {}", v.message().unwrap_or("unknown error"))),
+            _ => ApiError::BadGateway("Amazon Bedrock returned an error. Try again or pick another model.".into()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relaxes_what_bedrock_rejects() {
+        let mut s = Shape::new("us.xai.grok-4.7");
+        assert!(s.low_effort && !Shape::new("mistral.mistral-7b-instruct-v0:2").low_effort);
+        assert!(s.relax("The parameter reasoning_effort is not supported."));
+        assert!(!s.low_effort);
+        assert!(s.relax("This model doesn't support the temperature field. Remove temperature and try again."));
+        assert!(!s.temperature);
+        assert!(s.relax("This model doesn't support system messages. Try again without a system message or use a model that supports system messages."));
+        assert!(!s.system);
+        assert!(s.relax("The maximum tokens you requested exceeds the model limit of 2048. Try again with a maximum tokens value that is lower than 2048."));
+        assert_eq!(s.max_tokens, 2048);
+        // Nothing left to drop, so these surface as errors instead of looping.
+        assert!(!s.relax("This model doesn't support the temperature field. Remove temperature and try again."));
+        assert!(!s.relax("The maximum tokens you requested exceeds the model limit of 2048."));
+        assert!(!s.relax("Input is too long for requested model."));
     }
 }

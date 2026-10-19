@@ -71,7 +71,9 @@ Resources:
       Runtime: provided.al2023
       Architectures: [arm64]
       MemorySize: 512 # Argon2 password hashing is CPU/memory bound
-      Timeout: 10
+      # AI reviews on reasoning models (e.g. Grok via Bedrock) take ~25 s; API Gateway's own
+      # limit is 30 s. api/src/ai.rs stops waiting for Bedrock at 25 s.
+      Timeout: 29
       Environment:
         Variables:
           TABLE_NAME: !Ref Table
