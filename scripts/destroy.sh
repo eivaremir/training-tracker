@@ -7,7 +7,7 @@ usage() {
   cat <<USAGE
 Usage: scripts/destroy.sh [--delete-data] [--delete-artifacts] [--yes]
 
-Deletes the Amplify app and the CloudFormation stack (Lambda, HTTP API,
+Deletes the Amplify app and the CloudFormation stack (Lambda and its URL,
 signing secret, logs).
 
   --delete-data        Also delete the DynamoDB table. All users and training data are lost.

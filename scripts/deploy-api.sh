@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the Rust Lambda (in Docker) and deploys the CloudFormation stack:
-# DynamoDB (on-demand) + Lambda + HTTP API + Secrets Manager signing key.
+# DynamoDB (on-demand) + Lambda with a public function URL + Secrets Manager signing key.
 # shellcheck source=lib/common.sh
 source "$(dirname "$0")/lib/common.sh"
 
@@ -62,6 +62,7 @@ aws cloudformation package \
   --s3-bucket "$BUCKET" --s3-prefix "$STACK_NAME" \
   --output-template-file "$ROOT_DIR/infra/packaged.yaml" >/dev/null
 
+OLD_API_URL="$(stack_exists && stack_output ApiUrl || true)"
 log "Deploying stack $(bold "$STACK_NAME") to $AWS_REGION (CORS: $CORS_ORIGINS)"
 aws cloudformation deploy \
   --template-file "$ROOT_DIR/infra/packaged.yaml" --stack-name "$STACK_NAME" \
@@ -71,6 +72,9 @@ aws cloudformation deploy \
   --no-fail-on-empty-changeset
 
 API_URL="$(stack_output ApiUrl)"
+if [[ -n "$OLD_API_URL" && "$OLD_API_URL" != "$API_URL" ]]; then
+  warn "The API URL changed ($OLD_API_URL -> $API_URL). Run ./scripts/deploy-web.sh so the web app uses it."
+fi
 if curl -fsS --max-time 20 "$API_URL/health" >/dev/null; then
   ok "API healthy: $API_URL"
 else
