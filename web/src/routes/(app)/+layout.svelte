@@ -18,6 +18,7 @@
     { label: 'Execution', icon: 'play', menu: [
       { href: '/today', label: 'Today', icon: 'today' },
       { href: '/log', label: 'Log', icon: 'list' },
+      { href: '/history', label: 'History', icon: 'history' },
       { href: '/plans', label: 'Plans', icon: 'cal' }
     ] },
     { href: '/library', label: 'Library', icon: 'dumbbell' },
