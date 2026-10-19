@@ -1,21 +1,25 @@
 <script lang="ts">
-  // Read-only heat map of training load (weight × reps) over the last N days.
+  // Read-only heat map of training load (weight × reps) between two local dates (inclusive).
+  import type { Snippet } from 'svelte';
   import Label from './Label.svelte';
   import BigNum from './BigNum.svelte';
   import BodyFigure from './BodyFigure.svelte';
   import { MUSCLES, PARENT, SHAPES, childrenOf } from '../muscles';
   import { heatColor } from '../heat';
-  import { addDays, ymd } from '../dates';
+  import { addDays, parseYmd, ymd } from '../dates';
   import { store } from '../store.svelte';
   import { toUnit, unit, latestBodyKg, isBodyweight } from '../units';
 
-  let { days = 7 }: { days?: number } = $props();
+  // `from`/`to` are YYYY-MM-DD; the default is the last 7 days. `controls` renders beside the title.
+  let { from = ymd(addDays(store.today, -6)), to = store.todayStr, controls }: { from?: string; to?: string; controls?: Snippet } = $props();
   let hover = $state<string | null>(null);
 
+  // "Oct 13 – Oct 19", or "Oct 1" when the range is a single day.
+  const fmtDay = (s: string) => parseYmd(s).toLocaleString('en-US', { month: 'short', day: 'numeric' });
+  const rangeText = $derived(from === to ? fmtDay(from) : `${fmtDay(from)} – ${fmtDay(to)}`);
+
   const stats = $derived.by(() => {
-    const cut = ymd(addDays(store.today, -(days - 1)));
-    const today = store.todayStr;
-    const logs = store.sessions.filter((s) => s.date >= cut && s.date <= today).flatMap((s) => s.logs).filter((l) => l.actual);
+    const logs = store.sessions.filter((s) => s.date >= from && s.date <= to).flatMap((s) => s.logs).filter((l) => l.actual);
     const score: Record<string, number> = {}, groupVol: Record<string, number> = {};
     const bodyKg = latestBodyKg() ?? 0;
     let total = 0;
@@ -53,7 +57,11 @@
 
 <div class="card box">
   <div class="head">
-    <Label>Muscle load · {days} days</Label>
+    <Label>Muscle load</Label>
+    {@render controls?.()}
+  </div>
+  <div class="sub">
+    <Label size={9} color="var(--text-low)">{rangeText}</Label>
     <Label size={9} color="var(--text-low)">{fmtVol(stats.total)} {unit()} lifted</Label>
   </div>
   <!-- Fixed-height line so the figures don't jump while hovering. -->
@@ -89,7 +97,8 @@
 
 <style>
   .box { padding: 14px; }
-  .head { display: flex; align-items: baseline; justify-content: space-between; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+  .sub { margin-top: 6px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .detail { height: 16px; margin-top: 4px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .figs { margin-top: 6px; display: flex; gap: 4px; }
   .scale { margin-top: 10px; display: flex; align-items: center; gap: 8px; }

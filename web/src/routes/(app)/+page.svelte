@@ -59,10 +59,37 @@
     ];
   });
 
+  const sessionsOn = (ds: string) => store.sessions.filter((s) => s.date === ds && s.logs.length).length;
   const last14 = $derived(Array.from({ length: 14 }, (_, i) => {
     const ds = ymd(addDays(today, -(13 - i)));
-    return { ds, count: store.sessions.filter((s) => s.date === ds && s.logs.length).length };
+    return { ds, count: sessionsOn(ds) };
   }));
+
+  // Current calendar month as a Mon-first grid; `monthLead` blank cells line day 1 up under its weekday.
+  const monthLead = (new Date(today.getFullYear(), today.getMonth(), 1).getDay() + 6) % 7;
+  const monthDays = $derived(Array.from({ length: new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() }, (_, i) => {
+    const d = i + 1, ds = ymd(new Date(today.getFullYear(), today.getMonth(), d));
+    return { d, ds, future: d > dom, count: d > dom ? 0 : sessionsOn(ds) };
+  }));
+  const monthTrained = $derived(monthDays.filter((c) => c.count).length);
+
+  // Body heat map window, remembered per viewer.
+  type HeatRange = '7d' | 'mtd' | 'ytd';
+  const HEAT_RANGES: { key: HeatRange; label: string; title: string }[] = [
+    { key: '7d', label: '7D', title: 'Last 7 days' },
+    { key: 'mtd', label: 'MTD', title: 'Month to date' },
+    { key: 'ytd', label: 'YTD', title: 'Year to date' }
+  ];
+  const HEAT_KEY = 'tt-heat-range';
+  let heatRange = $state<HeatRange>((() => {
+    try { const v = localStorage.getItem(HEAT_KEY); return HEAT_RANGES.some((r) => r.key === v) ? (v as HeatRange) : '7d'; } catch { return '7d'; }
+  })());
+  const setHeatRange = (r: HeatRange) => { heatRange = r; try { localStorage.setItem(HEAT_KEY, r); } catch { /* private mode */ } };
+  const heatFrom = $derived(
+    heatRange === 'ytd' ? ymd(new Date(today.getFullYear(), 0, 1))
+    : heatRange === 'mtd' ? ymd(new Date(today.getFullYear(), today.getMonth(), 1))
+    : ymd(addDays(today, -6))
+  );
 </script>
 
 <TopBar title="Dashboard" subtitle="{wd.toUpperCase()} · {monthName} {dom}">
@@ -104,7 +131,16 @@
     </div>
   {/if}
 
-  <BodyHeatMap days={7} />
+  <BodyHeatMap from={heatFrom} to={todayStr}>
+    {#snippet controls()}
+      <div class="pill" role="radiogroup" aria-label="Heat map range">
+        {#each HEAT_RANGES as r (r.key)}
+          <button role="radio" aria-checked={heatRange === r.key} class:on={heatRange === r.key} title={r.title} aria-label={r.title}
+            onclick={() => setHeatRange(r.key)}>{r.label}</button>
+        {/each}
+      </div>
+    {/snippet}
+  </BodyHeatMap>
 
   <WeightCard compact />
 
@@ -129,6 +165,21 @@
       {#each last14 as c (c.ds)}
         <div title="{c.ds}: {c.count}" style:background={c.count === 0 ? 'var(--border)' : c.count >= 2 ? 'var(--text)' : 'var(--mid)'}
           style:opacity={c.count === 0 ? 0.5 : 1}></div>
+      {/each}
+    </div>
+  </div>
+
+  <div class="card" style="padding:14px">
+    <div class="between" style="align-items:baseline;margin-bottom:12px">
+      <Label>Activity · {monthName}</Label>
+      <Label size={9} color="var(--text-low)">{monthTrained}/{dom} days</Label>
+    </div>
+    <div class="month">
+      {#each WEEK_MON as w (w)}<span class="wd">{w.slice(0, 1)}</span>{/each}
+      {#each { length: monthLead }, i (i)}<span></span>{/each}
+      {#each monthDays as c (c.ds)}
+        <div class="day" class:l1={c.count === 1} class:l2={c.count >= 2} class:future={c.future} class:today={c.ds === todayStr}
+          title={c.future ? c.ds : `${c.ds}: ${c.count}`}>{c.d}</div>
       {/each}
     </div>
   </div>
@@ -182,6 +233,20 @@
   .rest div { margin-top: 6px; font-family: var(--f-sans); font-size: 13px; color: var(--text-mid); }
   .strip { display: flex; align-items: flex-end; gap: 4px; height: 50px; }
   .strip div { flex: 1; height: 36px; border-radius: 3px; }
+  /* Month grid: same scale as the strip — border (none, at 50%), mid (1), text (2+). */
+  .month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .wd { text-align: center; font-family: var(--f-mono); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-low); padding-bottom: 2px; }
+  .day { height: 30px; border-radius: 3px; display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-mono); font-size: 11px; color: var(--text-low); background: color-mix(in srgb, var(--border) 50%, transparent); }
+  .day.l1 { background: var(--mid); color: var(--text); }
+  .day.l2 { background: var(--text); color: var(--bg); }
+  .day.future { background: transparent; border: 1px dashed var(--border); opacity: 0.5; }
+  .day.today { outline: 1.5px solid var(--text); outline-offset: 2px; color: var(--text); }
+  .day.today.l2 { color: var(--bg); }
+  .pill { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+  .pill button { padding: 5px 10px; border: none; cursor: pointer; background: transparent; color: var(--text-mid);
+    font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+  .pill button.on { background: var(--text); color: var(--bg); }
   .manage { color: var(--text-mid); font-family: var(--f-mono); font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
     display: flex; align-items: center; gap: 4px; text-decoration: none; }
   .plan { width: 100%; padding: 14px; display: flex; flex-direction: column; gap: 10px; text-decoration: none; color: var(--text); }
