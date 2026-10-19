@@ -11,8 +11,8 @@ This guide takes you from a fresh clone to a running, login-protected instance o
      │  HTTPS + Bearer token
      ▼
 ┌──────────────────────────┐    ┌──────────────────────┐    ┌───────────────────────────┐
-│ API Gateway HTTP API     │───▶│ Lambda (Rust, arm64) │───▶│ DynamoDB (on-demand)      │
-│ (public URL, throttled)  │    │                      │    │ users + training data     │
+│ Lambda function URL      │───▶│ Lambda (Rust, arm64) │───▶│ DynamoDB (on-demand)      │
+│ (public HTTPS endpoint)  │    │ max 10 in parallel   │    │ users + training data     │
 └──────────────────────────┘    └──────────┬───────────┘    └───────────────────────────┘
                                            │ reads at cold start
                                            ▼
@@ -27,8 +27,7 @@ EventBridge Scheduler (every 15 min) ──▶ Reminders Lambda ──▶ browse
 | Resource | Created by | Reachable from the internet? |
 |---|---|---|
 | Amplify app + branch | `deploy-web.sh` | Yes: the website (static files only) |
-| API Gateway HTTP API | `deploy-api.sh` (CloudFormation) | Yes, but only `/health` and `/auth/login` work without a login token. Throttled to 20 req/s, burst 50 |
-| Lambda function + IAM role | `deploy-api.sh` | No, only through the API |
+| Lambda function + IAM role + function URL | `deploy-api.sh` (CloudFormation) | Yes, through its function URL, but only `/health` and `/auth/login` work without a login token. At most 10 requests run at once (reserved concurrency) |
 | DynamoDB table (`PAY_PER_REQUEST`, point-in-time recovery) | `deploy-api.sh` | No |
 | Secrets Manager secrets (token-signing key, Web Push key) | `deploy-api.sh` | No |
 | Reminders Lambda + EventBridge schedule (every 15 min) | `deploy-api.sh` | No |
@@ -39,7 +38,7 @@ Everything is tagged `Project=<stack name>` and `ManagedBy=training-tracker-scri
 
 ## Cost
 
-There's no always-on server. The fixed monthly charge is the two Secrets Manager secrets (about $0.40/month each). The reminders Lambda runs about 2,900 times a month, typically within the Lambda free tier. **The Bedrock AI coach is billed per token to the deploying account**; each user is limited to 30 requests a day, and small models such as Amazon Nova Micro/Lite cost fractions of a cent per review. The Claude option is billed to each user's own Anthropic account. Lambda, API Gateway, DynamoDB on-demand and Amplify Hosting are billed per request, per GB stored or per GB served. For a personal instance that usually lands within the AWS Free Tier or at a few dollars a month. Check current prices before you deploy: [Lambda](https://aws.amazon.com/lambda/pricing/), [API Gateway](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB](https://aws.amazon.com/dynamodb/pricing/on-demand/), [Amplify](https://aws.amazon.com/amplify/pricing/), [Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/).
+There's no always-on server. The fixed monthly charge is the two Secrets Manager secrets (about $0.40/month each). The reminders Lambda runs about 2,900 times a month, typically within the Lambda free tier. **The Bedrock AI coach is billed per token to the deploying account**; each user is limited to 30 requests a day, and small models such as Amazon Nova Micro/Lite cost fractions of a cent per review. The Claude option is billed to each user's own Anthropic account. Lambda (function URLs cost nothing extra), DynamoDB on-demand and Amplify Hosting are billed per request, per GB stored or per GB served. For a personal instance that usually lands within the AWS Free Tier or at a few dollars a month. Check current prices before you deploy: [Lambda](https://aws.amazon.com/lambda/pricing/), [DynamoDB](https://aws.amazon.com/dynamodb/pricing/on-demand/), [Amplify](https://aws.amazon.com/amplify/pricing/), [Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/).
 
 ## Prerequisites
 
@@ -50,7 +49,7 @@ There's no always-on server. The fixed monthly charge is the two Secrets Manager
 | [Node.js](https://nodejs.org) | 20.19+ or 22+ | Builds the web app |
 | `zip`, `curl`, `bash` | | Packaging and upload |
 
-**AWS permissions.** The identity you deploy with needs to manage: CloudFormation, IAM roles (the stack creates the Lambdas' roles), Lambda, API Gateway, DynamoDB, Secrets Manager, EventBridge Scheduler, CloudWatch Logs, S3 and Amplify.
+**AWS permissions.** The identity you deploy with needs to manage: CloudFormation, IAM roles (the stack creates the Lambdas' roles), Lambda (including function URLs), DynamoDB, Secrets Manager, EventBridge Scheduler, CloudWatch Logs, S3 and Amplify.
 
 **Bedrock models.** The AI coach lists only the models your account can already invoke in the deployment region. Anthropic models are never offered through Bedrock (users bring their own Anthropic key instead). If the list is empty, enable models in the Bedrock console for your region. An administrator role in a dedicated account (or AWS Organizations sandbox account) is the simplest setup.
 
@@ -87,7 +86,7 @@ It lists what it's about to create, asks for confirmation, and at the end prompt
 ```
  ✓  Done.
   Web: https://main.d1abc2def3.amplifyapp.com
-  API: https://abc123.execute-api.us-east-1.amazonaws.com
+  API: https://abc123def456.lambda-url.us-east-1.on.aws
 ```
 
 **3. Open the web URL and sign in.** New accounts start empty. **Stats → Load demo data** fills in four weeks of example history.
@@ -124,7 +123,7 @@ For web changes:
 ./scripts/deploy-web.sh
 ```
 
-CloudFormation only replaces what changed. Your data is untouched.
+CloudFormation only replaces what changed. Your data is untouched. If `deploy-api.sh` reports that the API URL changed (for example when moving an older deployment from API Gateway to the function URL), run `deploy-web.sh` too so the web app points at the new URL.
 
 ### Add users
 
@@ -201,7 +200,8 @@ A kept table is not reattached if you deploy again later. A new, empty table is 
 - **CORS** is limited to your Amplify URL (plus any `CORS_ORIGINS` you add).
 - **Browser headers**: the site sends HSTS, `X-Frame-Options: DENY`, `nosniff` and a strict referrer policy.
 - **Weak test accounts**: `test@mailinator.com` / `123456789` exists only in the local Docker setup. Don't create it on a public deployment; Mailinator inboxes are public and the password is easy to guess.
-- **Stronger protection** (optional): put AWS WAF in front of the API for per-IP rate limits, and turn on DynamoDB deletion protection for the table.
+- **Rate limits**: the API runs at most 10 requests at once (reserved concurrency); extra requests get `429`. Failed logins and AI requests also have per-account limits.
+- **Stronger protection** (optional): put CloudFront with AWS WAF in front of the function URL for per-IP rate limits, and turn on DynamoDB deletion protection for the table.
 
 ## Troubleshooting
 

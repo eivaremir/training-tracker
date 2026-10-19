@@ -4,8 +4,8 @@ Mobile-first workout tracker built from the Claude Design handoff (`Training Tra
 
 ```
 web/     SvelteKit 2 + Svelte 5 SPA  → AWS Amplify Hosting
-api/     Rust (axum + lambda_http)   → AWS Lambda (arm64) behind an API Gateway HTTP API
-infra/   CloudFormation/SAM template (Lambda + HTTP API + DynamoDB on-demand) and Amplify settings
+api/     Rust (axum + lambda_http)   → AWS Lambda (arm64) with a public function URL
+infra/   CloudFormation/SAM template (Lambda + function URL + DynamoDB on-demand) and Amplify settings
 scripts/ Deploy, update, status, logs and teardown scripts (AWS CLI + Docker)
 docs/    Deployment guide
 docker-compose.yml   Local AWS stack: DynamoDB Local + the API as a plain HTTP server
@@ -53,7 +53,7 @@ With the AWS CLI, Docker and Node installed and signed in to AWS:
 cp deploy.env.example deploy.env && ./scripts/up.sh --admin-email you@example.com
 ```
 
-That creates the whole stack (S3 artifact bucket, DynamoDB on-demand table, Rust Lambda, HTTP API, signing secret, Amplify site) and your first login. **[docs/deploy-aws.md](docs/deploy-aws.md)** covers costs, permissions, updates, custom domains, teardown and troubleshooting.
+That creates the whole stack (S3 artifact bucket, DynamoDB on-demand table, Rust Lambda with its public URL, signing secret, Amplify site) and your first login. **[docs/deploy-aws.md](docs/deploy-aws.md)** covers costs, permissions, updates, custom domains, teardown and troubleshooting.
 
 ## Auth
 

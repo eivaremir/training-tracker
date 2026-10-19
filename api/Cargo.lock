@@ -3564,7 +3564,6 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-sdk-dynamodb",
  "aws-sdk-secretsmanager",
- "aws-smithy-types",
  "axum",
  "base64ct",
  "chrono",

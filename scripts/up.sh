@@ -26,7 +26,7 @@ done
 
 check_prereqs node zip
 echo "Deploying $(bold "$STACK_NAME") to account $(account_id), region $(bold "$AWS_REGION")."
-echo "Creates: S3 artifact bucket, DynamoDB table, Lambda, HTTP API (public URL), Secrets Manager secret, Amplify app (public URL)."
+echo "Creates: S3 artifact bucket, DynamoDB table, Lambda (public function URL), Secrets Manager secret, Amplify app (public URL)."
 confirm "Continue?" || die "Aborted."
 
 DIR="$(dirname "$0")"

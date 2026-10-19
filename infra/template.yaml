@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Training Tracker API — Rust on Lambda (arm64) + HTTP API + DynamoDB (on-demand)
+Description: Training Tracker API — Rust on Lambda (arm64, public function URL) + DynamoDB (on-demand)
 
 Parameters:
   VapidSecretArn:
@@ -55,13 +55,6 @@ Resources:
         PasswordLength: 64
         ExcludePunctuation: true
 
-  HttpApi:
-    Type: AWS::Serverless::HttpApi
-    Properties:
-      DefaultRouteSettings:
-        ThrottlingBurstLimit: 50
-        ThrottlingRateLimit: 20
-
   ApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -71,9 +64,15 @@ Resources:
       Runtime: provided.al2023
       Architectures: [arm64]
       MemorySize: 512 # Argon2 password hashing is CPU/memory bound
-      # AI reviews on reasoning models (e.g. Grok via Bedrock) take ~25 s; API Gateway's own
-      # limit is 30 s. api/src/ai.rs stops waiting for Bedrock at 25 s.
-      Timeout: 29
+      # AI reviews on reasoning models (e.g. Grok via Bedrock) can take 30 s or more; api/src/ai.rs
+      # stops waiting for Bedrock at 80 s. Every other route answers in well under a second.
+      Timeout: 90
+      # Caps parallel invocations (and so cost) now that no API Gateway throttles in front.
+      ReservedConcurrentExecutions: 10
+      # Public HTTPS endpoint. The app checks its own session tokens and answers CORS itself
+      # (CORS_ORIGINS), so the URL has no IAM auth and no CORS config of its own.
+      FunctionUrlConfig:
+        AuthType: NONE
       Environment:
         Variables:
           TABLE_NAME: !Ref Table
@@ -109,13 +108,6 @@ Resources:
               Resource:
                 - arn:aws:bedrock:*::foundation-model/anthropic.*
                 - !Sub arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*anthropic.*
-      Events:
-        Proxy:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApi
-            Path: /{proxy+}
-            Method: ANY
 
   ApiLogs:
     Type: AWS::Logs::LogGroup
@@ -160,7 +152,8 @@ Resources:
 Outputs:
   ApiUrl:
     Description: Set this as VITE_API_URL in Amplify
-    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+    # The function URL without its trailing slash.
+    Value: !Join ['', ['https://', !Select [2, !Split ['/', !GetAtt ApiFunctionUrl.FunctionUrl]]]]
   TableName:
     Value: !Ref Table
   ApiFunctionName:

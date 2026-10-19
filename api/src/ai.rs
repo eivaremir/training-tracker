@@ -5,8 +5,7 @@
 //! excluded on purpose: Claude is used through Anthropic's own API with the user's key instead.
 //!
 //! Models differ in what Converse accepts (Grok rejects `temperature`, Mistral 7B rejects system
-//! prompts, Llama 3 caps output at 2048 tokens). Grok also gets a low reasoning effort to stay
-//! inside API Gateway's 30 s limit. `review` drops whatever a model's
+//! prompts, Llama 3 caps output at 2048 tokens). `review` drops whatever a model's
 //! ValidationException names, retries, and remembers the result per model.
 use crate::error::ApiError;
 use anyhow::{Context, Result};
@@ -21,7 +20,6 @@ use aws_sdk_bedrockruntime::operation::converse::{ConverseError, ConverseOutput}
 use aws_sdk_bedrockruntime::types::{
     ContentBlock, ConversationRole, InferenceConfiguration, Message, StopReason, SystemContentBlock,
 };
-use aws_smithy_types::Document;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -34,11 +32,9 @@ pub const DAILY_LIMIT: u32 = 30;
 /// they answer: Grok 4.7 uses ~1.4k tokens on a typical day's review.
 const MAX_TOKENS: i32 = 4096;
 const TEMPERATURE: f32 = 0.4;
-/// API Gateway gives up on the Lambda after 30 s (the function's own timeout is 29 s); stop waiting
-/// for Bedrock before that so the client gets a readable error instead of a bare 5xx.
-const CONVERSE_TIMEOUT: Duration = Duration::from_secs(25);
-/// Grok always reasons (default effort "high"); "low" keeps Grok 4.7 nearer 20 s than 25+ s.
-const GROK_REASONING_EFFORT: &str = "low";
+/// Reasoning models take 10-40 s per review. Stop waiting before the Lambda's own 90 s timeout
+/// so the client gets a readable error instead of a bare 5xx.
+const CONVERSE_TIMEOUT: Duration = Duration::from_secs(80);
 
 type ConverseFailure = SdkError<ConverseError, HttpResponse>;
 
@@ -59,19 +55,17 @@ pub struct ModelInfo {
 
 /// What a model accepts in a Converse request, narrowed by its ValidationExceptions.
 #[derive(Debug, Clone, Copy)]
-struct Shape { temperature: bool, system: bool, max_tokens: i32, low_effort: bool }
+struct Shape { temperature: bool, system: bool, max_tokens: i32 }
+
+impl Default for Shape {
+    fn default() -> Self { Self { temperature: true, system: true, max_tokens: MAX_TOKENS } }
+}
 
 impl Shape {
-    fn new(model_id: &str) -> Self {
-        Self { temperature: true, system: true, max_tokens: MAX_TOKENS, low_effort: model_id.contains("xai.grok") }
-    }
-
     /// Drops what a ValidationException complains about; false if it names nothing we can drop.
     fn relax(&mut self, msg: &str) -> bool {
         let m = msg.to_lowercase();
-        if self.low_effort && m.contains("reasoning_effort") {
-            self.low_effort = false;
-        } else if self.temperature && m.contains("temperature") {
+        if self.temperature && m.contains("temperature") {
             self.temperature = false;
         } else if self.system && m.contains("system message") {
             self.system = false;
@@ -193,8 +187,8 @@ impl Ai {
     }
 
     pub async fn review(&self, model_id: &str, prompt: &str) -> Result<String, ApiError> {
-        let mut shape = self.shapes.lock().unwrap().get(model_id).copied().unwrap_or_else(|| Shape::new(model_id));
-        // One retry per thing a model can reject (reasoning effort, temperature, system prompt, output budget).
+        let mut shape = self.shapes.lock().unwrap().get(model_id).copied().unwrap_or_default();
+        // One retry per thing a model can reject (temperature, system prompt, output budget).
         let out = loop {
             match self.converse(model_id, prompt, shape).await {
                 Ok(out) => break out,
@@ -230,11 +224,6 @@ impl Ai {
         if shape.temperature { config = config.temperature(TEMPERATURE); }
         let mut req = self.runtime.converse().model_id(model_id).messages(message).inference_config(config.build());
         if shape.system { req = req.system(SystemContentBlock::Text(SYSTEM_PROMPT.into())); }
-        if shape.low_effort {
-            req = req.additional_model_request_fields(Document::Object(HashMap::from([(
-                "reasoning_effort".to_owned(), Document::String(GROK_REASONING_EFFORT.into()),
-            )])));
-        }
         req.send().await
     }
 
@@ -275,10 +264,7 @@ mod tests {
 
     #[test]
     fn relaxes_what_bedrock_rejects() {
-        let mut s = Shape::new("us.xai.grok-4.7");
-        assert!(s.low_effort && !Shape::new("mistral.mistral-7b-instruct-v0:2").low_effort);
-        assert!(s.relax("The parameter reasoning_effort is not supported."));
-        assert!(!s.low_effort);
+        let mut s = Shape::default();
         assert!(s.relax("This model doesn't support the temperature field. Remove temperature and try again."));
         assert!(!s.temperature);
         assert!(s.relax("This model doesn't support system messages. Try again without a system message or use a model that supports system messages."));

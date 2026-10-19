@@ -1,4 +1,4 @@
-//! Training Tracker API — runs on AWS Lambda (behind an API Gateway HTTP API) or,
+//! Training Tracker API — runs on AWS Lambda (behind its public function URL) or,
 //! when not inside Lambda, as a plain HTTP server (local Docker development).
 mod ai;
 mod auth;
