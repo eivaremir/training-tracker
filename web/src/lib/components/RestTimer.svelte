@@ -1,60 +1,46 @@
-<script module lang="ts">
-  import { rest, type RestOwner } from '../rest.svelte';
-  import { beep, unlockAudio } from '../beep';
-  import type { Session } from '../types';
-
-  /** Start a rest. Call it from the set-logging tap so the countdown's beeps are allowed to play. */
-  export function startRest(seconds: number, owner: RestOwner) {
-    unlockAudio();
-    rest.start(seconds, owner);
-  }
-
-  /** Seconds of the active rest if it belongs to this (unfinished) session, e.g. after a reload; else null. */
-  export function restFor(session: Session | undefined) {
-    return session && !session.endedAt && rest.active?.sessionId === session.id ? rest.active.total : null;
-  }
-</script>
-
 <script lang="ts">
-  // Rest countdown for the active rest in $lib/rest. Remaining time is always (saved end time − now),
-  // re-read on a short tick and whenever the app returns to the foreground, so backgrounding can't
-  // freeze it. Beeps each of the last 10 seconds and plays a final tone at 0.
+  // Floating rest countdown, shown on every page by the app layout while $lib/rest has an active rest.
+  // Remaining time is always (saved end time − now), re-read on a short tick and whenever the app
+  // returns to the foreground, so backgrounding can't freeze it. Beeps each of the last 10 seconds
+  // and plays a final tone at 0. Tapping the time opens the routine it belongs to.
   import { onMount } from 'svelte';
   import Icon from './Icon.svelte';
   import Label from './Label.svelte';
-
-  let { ondone }: { ondone: () => void } = $props();
+  import { rest } from '../rest.svelte';
+  import { store } from '../store.svelte';
+  import { beep, unlockAudio } from '../beep';
 
   let now = $state(Date.now());
+  const a = $derived(rest.active);
   const left = $derived(rest.leftMs(now));
   const remaining = $derived(Math.max(0, Math.ceil(left / 1000)));
-  const total = $derived(rest.active?.total ?? 0);
-  const paused = $derived(rest.active?.pausedMs != null);
-  const pct = $derived(total ? Math.min(1, Math.max(0, left / (total * 1000))) : 0);
+  const paused = $derived(a?.pausedMs != null);
+  const pct = $derived(a?.total ? Math.min(1, Math.max(0, left / (a.total * 1000))) : 0);
   const mm = $derived(String(Math.floor(remaining / 60)).padStart(2, '0'));
   const ss = $derived(String(remaining % 60).padStart(2, '0'));
+  const href = $derived(a ? `/today?plan=${encodeURIComponent(a.planId)}&routine=${encodeURIComponent(a.routineId)}` : '/today');
+
+  // Finishing the session ends its rest too.
+  $effect(() => {
+    if (a && store.sessions.find((s) => s.id === a.sessionId)?.endedAt) rest.stop();
+  });
 
   let beeped = ''; // "startedAt:second" of the last beep, so no second beeps twice
 
   function tick() {
     now = Date.now();
-    const a = rest.active;
-    if (!a) return;
+    const r = rest.active;
+    if (!r) return;
     const ms = rest.leftMs(now);
     const sec = Math.max(0, Math.ceil(ms / 1000));
     // Only beep right after a second starts: seconds that went by while the app was suspended
     // stay silent instead of firing in a burst on return.
-    const key = `${a.startedAt}:${sec}`;
-    if (sec <= 10 && a.pausedMs == null && key !== beeped && sec * 1000 - ms < 500) {
+    const key = `${r.startedAt}:${sec}`;
+    if (sec <= 10 && r.pausedMs == null && key !== beeped && sec * 1000 - ms < 500) {
       beeped = key;
       beep(sec === 0);
     }
-    if (ms <= 0) finish();
-  }
-
-  function finish() {
-    rest.stop();
-    ondone();
+    if (ms <= 0) rest.stop();
   }
 
   function togglePause() {
@@ -91,28 +77,44 @@
   });
 </script>
 
-<div class="timer">
-  <div class="bar"><div style:height="{pct * 100}%"></div></div>
-  <div class="mid">
-    <Label>{paused ? 'Paused' : 'Rest'}</Label>
-    <div class="time">{mm}:{ss}</div>
-  </div>
-  <button class="pause" onclick={togglePause} aria-label={paused ? 'Resume' : 'Pause'}><Icon name={paused ? 'play' : 'pause'} size={16} /></button>
-  <button class="skip" onclick={finish} aria-label="Skip rest"><Icon name="x" size={16} /></button>
+<div class="timer" class:paused role="timer" aria-live="off">
+  <a class="face" {href} aria-label="{paused ? 'Rest paused' : 'Rest'} {mm}:{ss}. Open routine">
+    <svg class="ring" viewBox="0 0 40 40" aria-hidden="true">
+      <circle class="track" cx="20" cy="20" r="17" />
+      <circle class="fill" cx="20" cy="20" r="17" pathLength="100" stroke-dasharray="{pct * 100} 100" />
+    </svg>
+    <span class="txt">
+      <Label size={8}>{paused ? 'Paused' : 'Rest'}</Label>
+      <span class="time">{mm}:{ss}</span>
+    </span>
+  </a>
+  <button class="pause" onclick={togglePause} aria-label={paused ? 'Resume rest' : 'Pause rest'}><Icon name={paused ? 'play' : 'pause'} size={15} /></button>
+  <button class="skip" onclick={() => rest.stop()} aria-label="Skip rest"><Icon name="x" size={15} /></button>
 </div>
 
 <style>
+  /* Floats above the bottom tab bar on phones, bottom-right beside the rail/sidebar on wider screens.
+     z-index stays under the nav's open menu (55) and sheets (100). */
+  .timer { position: fixed; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 50;
+    display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 8px; border-radius: 34px;
+    background: var(--surface-hi); border: 1px solid var(--border-hi); box-shadow: var(--shadow);
+    animation: rest-in 0.18s ease-out; }
   @media (min-width: 720px) {
-    .timer { left: auto !important; right: 16px !important; bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important; width: 420px; }
+    .timer { right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
   }
-  .timer { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 50; max-width: 456px; margin: 0 auto;
-    background: var(--surface-hi); border: 1px solid var(--border-hi); border-radius: 14px; padding: 14px 16px;
-    display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow); }
-  .bar { width: 4px; height: 44px; background: var(--border); border-radius: 2px; position: relative; overflow: hidden; }
-  .bar div { position: absolute; bottom: 0; left: 0; right: 0; background: var(--text); transition: height 0.25s linear; }
-  .mid { flex: 1; }
-  .time { font-family: var(--f-cond); font-weight: 700; font-size: 32px; color: var(--text); letter-spacing: 0.5px; font-variant-numeric: tabular-nums; line-height: 1; }
-  button { width: 40px; height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  @keyframes rest-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+
+  .face { display: flex; align-items: center; gap: 10px; padding-right: 6px; color: inherit; text-decoration: none; }
+  .ring { width: 40px; height: 40px; transform: rotate(-90deg); flex-shrink: 0; }
+  .ring circle { fill: none; stroke-width: 4; }
+  .ring .track { stroke: var(--border); }
+  .ring .fill { stroke: var(--text); stroke-linecap: round; transition: stroke-dasharray 0.25s linear; }
+  .paused .ring .fill { stroke: var(--text-low); }
+  .txt { display: flex; flex-direction: column; gap: 2px; }
+  .time { font-family: var(--f-cond); font-weight: 700; font-size: 26px; color: var(--text); letter-spacing: 0.5px;
+    font-variant-numeric: tabular-nums; line-height: 1; }
+
+  button { width: 38px; height: 38px; border-radius: 19px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
   .pause { background: transparent; border: 1px solid var(--border-hi); color: var(--text); }
   .skip { background: var(--text); border: none; color: var(--bg); }
 </style>

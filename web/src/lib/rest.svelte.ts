@@ -1,6 +1,7 @@
 // The active rest between sets. It's stored as an end timestamp rather than a ticking counter, so
 // time keeps passing while the PWA is backgrounded (iOS suspends timers), and it's persisted to
-// localStorage so a reload or a killed app picks it back up.
+// localStorage so a reload or a killed app picks it back up. The app layout shows it on every page.
+import { unlockAudio } from './beep';
 
 const LS_KEY = 'tt-rest-v1';
 
@@ -24,7 +25,9 @@ function load(): ActiveRest | null {
 class Rest {
   active = $state<ActiveRest | null>(load());
 
+  /** Call from the set-logging tap: it also unlocks audio so the countdown's beeps can play. */
   start(seconds: number, owner: RestOwner) {
+    unlockAudio();
     const now = Date.now();
     this.set({ ...owner, total: seconds, startedAt: now, endsAt: now + seconds * 1000, pausedMs: null });
   }
