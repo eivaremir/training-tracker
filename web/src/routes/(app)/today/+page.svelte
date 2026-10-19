@@ -21,6 +21,7 @@
   import { rest } from '$lib/rest.svelte';
   import { store } from '$lib/store.svelte';
   import { meetsGoal, fmtWeight } from '$lib/units';
+  import { exercisePR, setOutcome, type Outcome, type ExercisePR } from '$lib/pr';
   import { uid, weekdayKey, ymd } from '$lib/dates';
   import type { RoutineExercise, SetLog } from '$lib/types';
 
@@ -55,6 +56,17 @@
   const plannedLogged = $derived(logs.filter((l) => l.goalSnapshot != null).length);
   const extraCount = $derived(logs.length - plannedLogged);
   const hitSets = $derived(logs.filter((l) => l.hitGoal && l.goalSnapshot != null).length);
+  // PR index per exercise in this routine (rebuilt whenever a set is logged, so colours stay live).
+  const prFor = $derived.by(() => {
+    const m = new Map<string, ExercisePR>();
+    for (const re of selected?.routine.exercises ?? []) if (!m.has(re.exerciseId)) m.set(re.exerciseId, exercisePR(re.exerciseId));
+    return m;
+  });
+  const prOf = (exId: string) => prFor.get(exId) ?? exercisePR(exId);
+  // One segment per planned set across the routine, coloured by how that set turned out.
+  const segments = $derived.by((): Outcome[] =>
+    selected ? selected.routine.exercises.flatMap((re) => re.goals.map((g, i) => setOutcome(prOf(re.exerciseId), logAt(re.exerciseId, i), g))) : []
+  );
   const activeKey = $derived.by(() => {
     for (const re of selected?.routine.exercises ?? [])
       for (let i = 0; i < re.goals.length; i++) if (!logAt(re.exerciseId, i)) return `${re.exerciseId}_${i}`;
@@ -162,7 +174,16 @@
       <BigNum size={22} color="var(--text-mid)">{hitSets}</BigNum>
       <Label>hit</Label>
     </div>
-    <div class="track"><div style:width="{totalSets ? Math.min(100, (plannedLogged / totalSets) * 100) : 0}%"></div></div>
+    <div class="segbar" role="img" aria-label="{plannedLogged} of {totalSets} sets logged, {hitSets} hit">
+      {#each segments as o, i (i)}<span class="seg {o}"></span>{/each}
+    </div>
+    {#if plannedLogged > 0}
+      <div class="legend">
+        <span class="lg"><i class="sw pr"></i>PR</span>
+        <span class="lg"><i class="sw hit"></i>Hit</span>
+        <span class="lg"><i class="sw under"></i>Under</span>
+      </div>
+    {/if}
   </div>
 
   <div class="list r-grid">
@@ -185,12 +206,14 @@
           {#if !exDone}<OverloadTip exerciseId={re.exerciseId} goals={re.goals} />{/if}
           {#each re.goals as g, i (i)}
             <SetRow idx={i} goal={g} log={logAt(re.exerciseId, i)} isActive={activeKey === `${re.exerciseId}_${i}`}
+              outcome={setOutcome(prOf(re.exerciseId), logAt(re.exerciseId, i), g)}
               onhit={() => record(re, i, { reps: g.reps, weight: g.weight }, true)}
               onedit={() => (editing = { re, idx: i })}
               onundo={() => undo(re, i)} />
           {/each}
           {#each extras as l (l.setIndex)}
             <SetRow idx={l.setIndex} goal={{ reps: l.actual?.reps ?? 0, weight: l.actual?.weight ?? 0, restSeconds: 0 }} log={l} isActive={false}
+              outcome={setOutcome(prOf(re.exerciseId), l, null)}
               onhit={() => {}} onedit={() => {}} onundo={() => undo(re, l.setIndex)} />
           {/each}
           <button class="add-set" onclick={() => (extraFor = re)} disabled={!ex}>
@@ -246,8 +269,20 @@
   .slash { color: var(--text-low); font-family: var(--f-cond); font-size: 22px; }
   .extra-badge { font-family: var(--f-cond); font-weight: 600; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase;
     color: var(--text-mid); background: var(--surface-hi); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; align-self: center; }
-  .track { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
-  .track div { height: 100%; background: var(--text); transition: width 0.3s; }
+  /* One segment per planned set, coloured by outcome (PR / hit / under / near-miss / not-done). */
+  .segbar { display: flex; gap: 2px; height: 5px; }
+  .seg { flex: 1; min-width: 0; border-radius: 1px; background: var(--border); transition: background 0.3s; }
+  .seg.done { background: var(--text-low); }
+  .seg.hit { background: var(--text); }
+  .seg.pr { background: var(--pr-1); }
+  .seg.under { background: var(--danger); }
+  .legend { display: flex; gap: 12px; margin-top: 8px; }
+  .lg { display: inline-flex; align-items: center; gap: 4px; font-family: var(--f-cond); font-weight: 600; font-size: 10px;
+    letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-low); }
+  .lg .sw { width: 8px; height: 8px; border-radius: 2px; }
+  .sw.pr { background: var(--pr-1); }
+  .sw.hit { background: var(--text); }
+  .sw.under { background: var(--danger); }
   .list { padding: 8px 12px 24px; }
   .ex { border-radius: 14px; background: var(--surface); border: 1px solid var(--border); overflow: hidden; }
   .ex-head { padding: 12px 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
