@@ -10,6 +10,9 @@
   import Sheet from '$lib/components/Sheet.svelte';
   import Toggle from '$lib/components/Toggle.svelte';
   import ExerciseThumb from '$lib/components/ExerciseThumb.svelte';
+  import ExerciseDetails from '$lib/components/ExerciseDetails.svelte';
+  import LastSets from '$lib/components/LastSets.svelte';
+  import IconButton from '$lib/components/IconButton.svelte';
   import SetRow from '$lib/components/SetRow.svelte';
   import EditSetForm from '$lib/components/EditSetForm.svelte';
   import RestTimer from '$lib/components/RestTimer.svelte';
@@ -52,6 +55,12 @@
   const sessionDone = $derived(totalSets > 0 && logs.length >= totalSets);
 
   let editing = $state<{ re: RoutineExercise; idx: number } | null>(null);
+  let detailId = $state<string | null>(null);
+  let detailTab = $state<'guide' | 'stats'>('guide');
+  const detailEx = $derived(detailId ? store.exercise(detailId) : undefined);
+  const openDetail = (id: string, tab: 'guide' | 'stats') => { detailTab = tab; detailId = id; };
+  // TopBar's height, so the progress block sticks right under it (TopBar grows with the safe-area inset).
+  let barH = $state(0);
   let restSheet = $state(false);
   let restSeconds = $state<number | null>(null);
 
@@ -95,6 +104,7 @@
   </div>
 {:else}
   {@const { plan, routine } = selected}
+  <div class="bar" bind:offsetHeight={barH}>
   <TopBar title={routine.name.toUpperCase()} subtitle="{plan.name} · {dateLabel}">
     {#snippet right()}
       <button class="rest-btn" onclick={() => (restSheet = true)}>
@@ -102,6 +112,7 @@
       </button>
     {/snippet}
   </TopBar>
+  </div>
 
   {#if items.length > 1}
     <div class="picker">
@@ -113,7 +124,7 @@
     </div>
   {/if}
 
-  <div class="overall">
+  <div class="overall" style:top="{barH - 1}px">
     <div class="nums">
       <BigNum size={30}>{logs.length}</BigNum>
       <span class="slash">/</span>
@@ -133,13 +144,15 @@
       <div class="ex r-flat" style:margin-top="{exIdx === 0 ? 4 : 18}px">
         <div class="ex-head">
           <ExerciseThumb name={ex?.name} muscles={ex?.muscles} images={ex?.images} instructions={ex?.instructions} size={44} zoom />
-          <div style="flex:1;min-width:0">
-            <div class="ex-name">{ex?.name ?? 'Deleted exercise'}</div>
+          <button class="ex-open" disabled={!ex} onclick={() => ex && openDetail(ex.id, 'guide')} aria-label="{ex?.name ?? 'Exercise'} details">
+            <span class="ex-name">{ex?.name ?? 'Deleted exercise'}</span>
             <Label size={9} color="var(--text-low)">{re.goals.length} sets · {re.goals[0]?.reps}×{fmtWeight(re.goals[0]?.weight ?? 0)} · rest {re.goals[0]?.restSeconds}s</Label>
-          </div>
+          </button>
+          {#if ex}<IconButton icon="chart" size={18} label="{ex.name} stats" onclick={() => openDetail(ex.id, 'stats')} />{/if}
           {#if exDone}<div class="done"><Icon name="check" size={14} /></div>{/if}
         </div>
         <div style="padding:8px">
+          <LastSets exerciseId={re.exerciseId} excludeSessionId={session?.id} compact />
           {#each re.goals as g, i (i)}
             <SetRow idx={i} goal={g} log={logAt(re.exerciseId, i)} isActive={activeKey === `${re.exerciseId}_${i}`}
               onhit={() => record(re, i, { reps: g.reps, weight: g.weight }, true)}
@@ -160,6 +173,10 @@
     {/if}
   </div>
 {/if}
+
+<Sheet open={!!detailEx} onclose={() => (detailId = null)} title={detailEx?.name} height="92vh">
+  {#if detailEx}<ExerciseDetails exercise={detailEx} bind:tab={detailTab} excludeSessionId={session?.id} />{/if}
+</Sheet>
 
 <Sheet open={!!editing} onclose={() => (editing = null)} title="Edit set">
   {#if editing}<EditSetForm goal={editing.re.goals[editing.idx]} equipment={store.exercise(editing.re.exerciseId)?.equipment} onsave={saveEdit} onskip={skip} />{/if}
@@ -192,7 +209,9 @@
     border-radius: 8px; cursor: pointer; font-family: var(--f-cond); font-weight: 600; font-size: 13px; letter-spacing: 1px;
     text-transform: uppercase; white-space: nowrap; }
   .picker button.on { background: var(--text); color: var(--bg); border-color: var(--text); }
-  .overall { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .bar { position: sticky; top: 0; z-index: 11; }
+  /* Overlaps the bar's bottom border by 1px so no content peeks through a rounding gap. */
+  .overall { position: sticky; z-index: 10; background: var(--bg); padding: 14px 16px; border-bottom: 1px solid var(--border); }
   .nums { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
   .slash { color: var(--text-low); font-family: var(--f-cond); font-size: 22px; }
   .track { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
@@ -200,7 +219,9 @@
   .list { padding: 8px 12px 24px; }
   .ex { border-radius: 14px; background: var(--surface); border: 1px solid var(--border); overflow: hidden; }
   .ex-head { padding: 12px 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
-  .ex-name { font-family: var(--f-cond); font-weight: 600; font-size: 18px; color: var(--text); letter-spacing: 0.3px;
+  .ex-open { flex: 1; min-width: 0; padding: 0; border: none; background: none; color: inherit; text-align: left; cursor: pointer; }
+  .ex-open:disabled { cursor: default; }
+  .ex-name { display: block; font-family: var(--f-cond); font-weight: 600; font-size: 18px; color: var(--text); letter-spacing: 0.3px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .done { width: 24px; height: 24px; border-radius: 12px; background: var(--text); color: var(--bg); display: flex; align-items: center; justify-content: center; }
   .gestures { margin-top: 18px; padding: 14px 16px; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-mid); }

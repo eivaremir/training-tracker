@@ -7,8 +7,7 @@
   import Label from '$lib/components/Label.svelte';
   import Sheet from '$lib/components/Sheet.svelte';
   import ExerciseEditor from '$lib/components/ExerciseEditor.svelte';
-  import ExerciseStats from '$lib/components/ExerciseStats.svelte';
-  import ExerciseGuide from '$lib/components/ExerciseGuide.svelte';
+  import ExerciseDetails from '$lib/components/ExerciseDetails.svelte';
   import ExerciseBrowser, { type BrowseState } from '$lib/components/ExerciseBrowser.svelte';
   import { store } from '$lib/store.svelte';
   import type { Exercise } from '$lib/types';
@@ -61,21 +60,14 @@
 <Sheet open={!!openEx} onclose={() => (openEx = null)} title={openEx?.name} height="92vh">
   {#if openEx}
     {@const ex = openEx}
-    <div class="seg-tabs" style="padding-top:12px">
-      <button class:on={detailTab === 'guide'} onclick={() => (detailTab = 'guide')}>Guide</button>
-      <button class:on={detailTab === 'stats'} onclick={() => (detailTab = 'stats')}>Stats</button>
-    </div>
-    {#if detailTab === 'guide'}
-      <div style="padding:16px 18px 24px">
-        <ExerciseGuide muscles={ex.muscles} equipment={ex.equipment} instructions={ex.instructions} images={ex.images} level={ex.level} category={ex.category} />
+    <ExerciseDetails exercise={ex} bind:tab={detailTab}>
+      {#snippet footer()}
         {#if !ex.instructions?.length && !ex.images?.length}
           <p class="hint">Add instructions from <strong>Edit</strong>, or add this movement from the catalog for photos and steps.</p>
         {/if}
-        <button class="dashed-btn" style="margin-top:16px" onclick={() => { editingEx = ex; openEx = null; }}><Icon name="edit" size={14} /> Edit exercise</button>
-      </div>
-    {:else}
-      <ExerciseStats exerciseId={ex.id} />
-    {/if}
+        <button class="dashed-btn" onclick={() => { editingEx = ex; openEx = null; }}><Icon name="edit" size={14} /> Edit exercise</button>
+      {/snippet}
+    </ExerciseDetails>
   {/if}
 </Sheet>
 <Sheet open={!!editingEx} onclose={() => (editingEx = null)} title="Edit · {editingEx?.name}" height="92vh">
@@ -91,5 +83,5 @@
   .pill button { padding: 8px 14px; border: none; cursor: pointer; background: transparent; color: var(--text-mid); display: flex; align-items: center;
     font-family: var(--f-cond); font-weight: 600; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
   .pill button.on { background: var(--text); color: var(--bg); }
-  .hint { margin: 14px 0 0; font-family: var(--f-sans); font-size: 13px; color: var(--text-mid); line-height: 1.5; }
+  .hint { margin: 0; font-family: var(--f-sans); font-size: 13px; color: var(--text-mid); line-height: 1.5; }
 </style>
