@@ -12,6 +12,7 @@
   import ExerciseThumb from '$lib/components/ExerciseThumb.svelte';
   import ExerciseDetails from '$lib/components/ExerciseDetails.svelte';
   import LastSets from '$lib/components/LastSets.svelte';
+  import OverloadTip from '$lib/components/OverloadTip.svelte';
   import IconButton from '$lib/components/IconButton.svelte';
   import SetRow from '$lib/components/SetRow.svelte';
   import EditSetForm from '$lib/components/EditSetForm.svelte';
@@ -154,6 +155,7 @@
         </div>
         <div style="padding:8px">
           <LastSets exerciseId={re.exerciseId} excludeSessionId={session?.id} compact />
+          {#if !exDone}<OverloadTip exerciseId={re.exerciseId} goals={re.goals} />{/if}
           {#each re.goals as g, i (i)}
             <SetRow idx={i} goal={g} log={logAt(re.exerciseId, i)} isActive={activeKey === `${re.exerciseId}_${i}`}
               onhit={() => record(re, i, { reps: g.reps, weight: g.weight }, true)}
