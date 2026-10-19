@@ -2,8 +2,9 @@
 import { api, ApiError } from './api';
 import { claudeReview, describeClaudeError, getClaudeKey, DEFAULT_CLAUDE_MODEL } from './anthropic';
 import { store } from './store.svelte';
-import { uid, addDays, parseYmd, ymd } from './dates';
+import { uid, addDays, mondayOf, parseYmd, ymd } from './dates';
 import { unit, toUnit, fmtWeight, isBodyweight } from './units';
+import { setVolumeKg, tracksVolume, volumeByDate } from './volume';
 import { EQUIPMENT } from './equipment';
 import { MUSCLES } from './muscles';
 import type { AiReview, Exercise, Session, SetGoal, SetLog } from './types';
@@ -12,6 +13,7 @@ import type { AiReview, Exercise, Session, SetGoal, SetLog } from './types';
 export const COACH_SYSTEM = "You are an experienced strength and conditioning coach reviewing a user's training log. \
 Base every observation only on the data provided. Be specific and concise: what went well, what to watch, \
 and 1-3 concrete suggestions for the next session (load, reps, rest, exercise choice), measured against its listed goals when given. \
+When you discuss volume progress or goal achievement, state the change as a percentage up or down, using the figures precomputed in the log; do not compute new ones. \
 Use the weight unit the log uses (kg or lb); a weight of 0 means bodyweight. \
 Format the answer in concise Markdown: short '###' sections (for example What went well, Watch, Next session), bullet lists, **bold** for key numbers; no tables. \
 Do not give medical advice; if something suggests pain or injury, recommend consulting a professional. \
@@ -36,6 +38,45 @@ const bodyKgOn = (date: string) => (store.weights.filter((w) => w.date <= date).
 const load = (kg: number, bw: boolean) => (kg === 0 && bw ? 'bodyweight' : fmtWeight(kg));
 /** History shorthand: "5×102.5", "8×BW". */
 const short = (s: { reps: number; weight: number }, bw: boolean) => `${s.reps}×${s.weight === 0 && bw ? 'BW' : toUnit(s.weight)}`;
+
+// Volume and goal rates are precomputed here so the model compares figures instead of doing arithmetic.
+/** "2,450 kg" in the display unit. */
+const volume = (kg: number) => `${toUnit(kg, 0).toLocaleString('en-US')} ${unit()}`;
+/** Volume of performed sets, counted as the app's volume charts do (cardio and stretching add none). */
+const volumeKg = (logs: SetLog[]) => logs.reduce((v, l) => {
+  const ex = store.exercise(l.exerciseId);
+  return v + (tracksVolume(ex) ? setVolumeKg(l, ex) : 0);
+}, 0);
+const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+const pctChange = (now: number, before: number) => signed(Math.round((now / before - 1) * 100));
+/** ", +8% vs 2026-10-12 (2,270 kg)"; empty when there is nothing earlier to compare with. */
+const vsEarlier = (kg: number, before?: { kg: number; date: string }) =>
+  before?.kg ? `, ${pctChange(kg, before.kg)}% vs ${before.date} (${volume(before.kg)})` : '';
+/** Most recent session before `date` that matches. */
+const lastBefore = (date: string, match: (s: Session) => boolean): Session | undefined =>
+  store.sessions.filter((s) => s.date < date && match(s)).sort((a, b) => b.date.localeCompare(a.date))[0];
+
+/** Share of goal sets hit, e.g. { pct: 83, text: "83% (10/12)" }; null when no set had a goal. */
+function hitRate(logs: SetLog[]) {
+  const planned = logs.filter((l) => l.goalSnapshot);
+  if (!planned.length) return null;
+  const hit = planned.filter((l) => l.hitGoal).length;
+  const pct = Math.round((hit / planned.length) * 100);
+  return { pct, text: `${pct}% (${hit}/${planned.length})` };
+}
+
+/** This week's volume up to `date` vs the same days last week, plus last week's total. */
+function weekVolume(date: string): string | null {
+  const d = parseYmd(date), mon = mondayOf(d), lastMon = addDays(mon, -7);
+  const n = Math.round((d.getTime() - mon.getTime()) / 86_400_000);
+  const sum = (from: Date, days: number) => [...volumeByDate(ymd(from), ymd(addDays(from, days))).values()].reduce((v, x) => v + x.vol, 0);
+  const now = sum(mon, n);
+  if (!now) return null;
+  const same = sum(lastMon, n), full = sum(lastMon, 6);
+  return `Week volume so far (${n ? `Mon–${weekday(date)}` : 'Mon'}): ${volume(now)}`
+    + (same ? `, ${pctChange(now, same)}% vs the same days last week (${volume(same)})` : '')
+    + (full ? `; last full week ${volume(full)}` : '') + '.';
+}
 
 const sessionTitle = (s: Session) => {
   if (!s.planId) return 'Extra workout (outside plan)';
@@ -92,6 +133,16 @@ function describeSession(s: Session): string {
       .map((e) => `${store.exercise(e.exerciseId)?.name ?? e.exerciseId} (${e.goals.length} sets)`);
     lines.push(`Sets logged: ${s.logs.length}/${total}${missing.length ? `; not logged: ${missing.join(', ')}` : ''}`);
   }
+  // Workout-level progress is against the previous session of the same routine.
+  const prev = s.routineId ? lastBefore(s.date, (x) => x.routineId === s.routineId && x.logs.length > 0) : undefined;
+  const rate = hitRate(s.logs), before = prev && hitRate(prev.logs);
+  if (rate) {
+    const diff = before ? rate.pct - before.pct : 0;
+    const change = !before ? '' : diff ? `, ${diff > 0 ? 'up' : 'down'} from ${before.text} on ${prev!.date} (${signed(diff)} pts)` : `, same as on ${prev!.date}`;
+    lines.push(`Goal sets hit: ${rate.text}${change}`);
+  }
+  const kg = volumeKg(s.logs);
+  if (kg) lines.push(`Volume: ${volume(kg)}${vsEarlier(kg, prev && { kg: volumeKg(prev.logs), date: prev.date })}`);
   // Extra workouts are entered after the fact, so their log times say nothing about pace or rest.
   const time = s.planId ? sessionTime(s) : null;
   if (time) lines.push(`Time: ${time}`);
@@ -103,7 +154,10 @@ function describeSession(s: Session): string {
     const info = exerciseInfo(ex, s.date);
     const rest = rests.size === 1 ? [...rests][0] : 0;
     if (rest) info.push(`rest goal ${mmss(rest)}`);
-    lines.push(`- ${ex?.name ?? exId}${info.length ? ` [${info.join('; ')}]` : ''}:`);
+    const exKg = volumeKg(logs);
+    const exPrev = exKg ? lastBefore(s.date, (x) => x.logs.some((l) => l.exerciseId === exId && l.actual)) : undefined;
+    const exVol = exKg ? ` volume ${volume(exKg)}${vsEarlier(exKg, exPrev && { kg: volumeKg(exPrev.logs.filter((l) => l.exerciseId === exId)), date: exPrev.date })}` : '';
+    lines.push(`- ${ex?.name ?? exId}${info.length ? ` [${info.join('; ')}]` : ''}:${exVol}`);
     logs.sort((a, b) => a.setIndex - b.setIndex).forEach((l) => {
       const g = l.goalSnapshot;
       const did = l.actual ? `${l.actual.reps} rep${l.actual.reps === 1 ? '' : 's'} × ${load(l.actual.weight, bw)}` : 'skipped';
@@ -158,10 +212,14 @@ export function buildDayPrompt(date: string, question: string): string {
   const sessions = store.sessions.filter((s) => s.date === date && s.logs.length);
   const day = sessions.length ? sessions.map(describeSession).join('\n\n') : 'No sets logged this day.';
   const timed = sessions.some((s) => s.planId && setGaps(s.logs).size);
-  const head = [`Training log for ${date} (${weekday(date)}). Weights in ${unit()}.${timed ? ' "after m:ss" = time since the previous set was logged (rest plus doing the set).' : ''}`];
+  const week = weekVolume(date);
+  const head = [`Training log for ${date} (${weekday(date)}). Weights in ${unit()}.`
+    + (timed ? ' "after m:ss" = time since the previous set was logged (rest plus doing the set).' : '')
+    + (week ? ' Volume = weight × reps (bodyweight sets count the latest weigh-in).' : '')];
 
   const w = store.weights.filter((x) => x.date <= date).slice(-5);
   if (w.length) head.push(`Body weight: ${w.map((x) => `${x.date} ${fmtWeight(x.kg)}`).join(', ')}${store.settings.weightGoalKg ? `; goal ${fmtWeight(store.settings.weightGoalKg)}` : ''}.`);
+  if (week) head.push(week);
   head.push(day);
   const notes = store.day(date)?.notes?.trim();
   if (notes) head.push(`Day notes: ${notes}`);
