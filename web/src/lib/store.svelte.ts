@@ -4,7 +4,8 @@ import { routinesOn, dayKey } from './plans';
 import { api, apiEnabled, UnauthorizedError, type Collection } from './api';
 import { buildMock } from './mock';
 import { WEEKDAYS, ymd } from './dates';
-import type { AppState, DayLog, Exercise, Plan, Routine, Session, Settings, WeightEntry } from './types';
+import { meetsGoal } from './units';
+import type { AppState, DayLog, Exercise, ID, Plan, Routine, Session, Settings, WeightEntry } from './types';
 
 const LS_KEY = 'tt-state-v1';
 
@@ -184,7 +185,39 @@ class Store {
     upsert(this.sessions, s);
     this.persist({ put: [['sessions', this.sessions.find((x) => x.id === s.id)!]] });
   }
+
+  /** The session a logged set belongs to: by its sessionId, else by a set that matches on date/exercise/index. */
+  private sessionOfLog(key: LogKey) {
+    return this.sessions.find((s) => s.id === key.sessionId)
+      ?? this.sessions.find((s) => s.date === key.date && s.logs.some((l) => l.exerciseId === key.exerciseId && l.setIndex === key.setIndex));
+  }
+
+  /**
+   * Correct one logged set's actual reps/weight (weight already in kg). Recomputes hitGoal against the
+   * log's goalSnapshot and re-persists the session, so historical charts pick up the fixed value.
+   */
+  updateLog(key: LogKey, actual: { reps: number; weight: number }) {
+    const s = this.sessionOfLog(key);
+    const log = s?.logs.find((l) => l.exerciseId === key.exerciseId && l.setIndex === key.setIndex);
+    if (!s || !log) return;
+    log.actual = actual;
+    const g = log.goalSnapshot;
+    log.hitGoal = g ? actual.reps >= g.reps && meetsGoal(actual.weight, g.weight) : true;
+    this.saveSession(s);
+  }
+
+  /** Remove a single logged set; if that empties the session (and it has no notes), delete the session. */
+  deleteLog(key: LogKey) {
+    const s = this.sessionOfLog(key);
+    if (!s) return;
+    const logs = $state.snapshot(s.logs).filter((l) => !(l.exerciseId === key.exerciseId && l.setIndex === key.setIndex));
+    if (logs.length || s.notes) this.saveSession({ ...$state.snapshot(s), logs });
+    else this.deleteSession(s.id);
+  }
 }
+
+/** Identifies one logged set across all sessions. */
+export interface LogKey { sessionId: ID; date: string; exerciseId: ID; setIndex: number }
 
 export function defaultSettings(): Settings {
   let timezone = 'UTC';
