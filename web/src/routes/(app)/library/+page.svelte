@@ -9,13 +9,18 @@
   import ExerciseEditor from '$lib/components/ExerciseEditor.svelte';
   import ExerciseDetails from '$lib/components/ExerciseDetails.svelte';
   import ExerciseBrowser, { type BrowseState } from '$lib/components/ExerciseBrowser.svelte';
+  import { onMount } from 'svelte';
+  import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
   import { store } from '$lib/store.svelte';
   import type { Exercise } from '$lib/types';
 
   const readPref = <T extends string>(key: string, fallback: T): T => { try { return (localStorage.getItem(key) as T) || fallback; } catch { return fallback; } };
   const writePref = (key: string, v: string) => { try { localStorage.setItem(key, v); } catch { /* ignore */ } };
 
-  let source = $state<'mine' | 'catalog'>(store.exercises.length ? 'mine' : 'catalog');
+  // ?muscle=<group> (dashboard "not trained" links): open the catalog's exercises for that group.
+  const linkMuscle = page.url.searchParams.get('muscle');
+  let source = $state<'mine' | 'catalog'>(linkMuscle || !store.exercises.length ? 'catalog' : 'mine');
   let view = $state<'cards' | 'list'>(readPref('tt-lib-view', 'cards'));
   const setView = (v: 'cards' | 'list') => { view = v; writePref('tt-lib-view', v); };
 
@@ -23,8 +28,12 @@
   const NAV_KEY = 'tt-lib-nav';
   const emptyNav = (): BrowseState => ({ eq: null, grp: null, q: '', muscle: '', equip: '' });
   let nav = $state<BrowseState>((() => {
+    // '*' is ExerciseBrowser's "all equipment", so the cards go straight to the group's exercises.
+    if (linkMuscle) return { ...emptyNav(), eq: '*', grp: linkMuscle, muscle: linkMuscle };
     try { return { ...emptyNav(), ...JSON.parse(sessionStorage.getItem(NAV_KEY) || '{}') }; } catch { return emptyNav(); }
   })());
+  // Drop the query once applied, so a reload restores the remembered browse position instead.
+  onMount(() => { if (linkMuscle) replaceState('/library', {}); });
   $effect(() => { const v = JSON.stringify(nav); try { sessionStorage.setItem(NAV_KEY, v); } catch { /* private mode */ } });
 
   let detailTab = $state<'guide' | 'stats'>('guide');

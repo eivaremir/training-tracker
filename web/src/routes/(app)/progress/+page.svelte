@@ -8,6 +8,7 @@
   import BigNum from '$lib/components/BigNum.svelte';
   import Button from '$lib/components/Button.svelte';
   import WeightCard from '$lib/components/WeightCard.svelte';
+  import VolumeHeatmap from '$lib/components/VolumeHeatmap.svelte';
   import { store } from '$lib/store.svelte';
   import { unit, toUnit } from '$lib/units';
   import { addDays, ymd } from '$lib/dates';
@@ -44,6 +45,8 @@
       </div>
     {/each}
   </div>
+
+  <div class="card box"><VolumeHeatmap title="Total volume · per day" /></div>
 
   {#if !sessions.length}
     <div class="card empty">

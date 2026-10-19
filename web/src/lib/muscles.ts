@@ -31,6 +31,10 @@ export const PARENT: Record<string, string> = {
 };
 
 export const childrenOf = (g: string) => Object.keys(PARENT).filter((k) => PARENT[k] === g);
+/** Top-level group of a muscle id ("glute_max" → "glutes"). */
+export const groupOf = (m: string) => PARENT[m] || m;
+/** Library page opened on the catalog's exercises for one muscle group. */
+export const libraryHref = (group: string) => `/library?muscle=${encodeURIComponent(group)}`;
 
 export type Shape = { id: string; d: string };
 export type BodyMode = 'simple' | 'advanced';

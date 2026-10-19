@@ -4,7 +4,7 @@
   import Label from './Label.svelte';
   import BigNum from './BigNum.svelte';
   import BodyFigure from './BodyFigure.svelte';
-  import { MUSCLES, PARENT, SHAPES, childrenOf } from '../muscles';
+  import { MUSCLES, PARENT, SHAPES, childrenOf, libraryHref } from '../muscles';
   import { heatColor } from '../heat';
   import { addDays, parseYmd, ymd } from '../dates';
   import { store } from '../store.svelte';
@@ -91,7 +91,10 @@
     </div>
   {/if}
   {#if stats.untrained.length}
-    <div class="untrained"><Label size={9} color="var(--text-low)">Not trained: {stats.untrained.map((g) => MUSCLES[g]).join(' · ')}</Label></div>
+    <div class="untrained">
+      <Label size={9} color="var(--text-low)">Not trained · tap to find exercises</Label>
+      <div class="chips">{#each stats.untrained as g (g)}<a class="chip" href={libraryHref(g)}>{MUSCLES[g]}</a>{/each}</div>
+    </div>
   {/if}
 </div>
 
@@ -113,4 +116,8 @@
   .p { text-align: right; font-family: var(--f-mono); font-size: 12px; color: var(--text-mid); }
   .u { margin-left: 3px; font-family: var(--f-mono); font-size: 11px; color: var(--text-low); }
   .untrained { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 6px 10px; border: 1px solid var(--border-hi); border-radius: 8px; color: var(--text); text-decoration: none;
+    font-family: var(--f-cond); font-weight: 600; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+  .chip:hover { background: var(--surface-hi); }
 </style>
