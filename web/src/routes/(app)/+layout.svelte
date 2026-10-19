@@ -3,6 +3,8 @@
   import { onMount, type Snippet } from 'svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { store } from '$lib/store.svelte';
+  import RestTimer from '$lib/components/RestTimer.svelte';
+  import { rest } from '$lib/rest.svelte';
 
   let { children }: { children: Snippet } = $props();
 
@@ -36,6 +38,9 @@
     <div class="content">{#if store.loaded}{@render children()}{/if}</div>
   </main>
 </div>
+
+<!-- Rest between sets floats over every page, not just Today. -->
+{#if rest.active}<RestTimer />{/if}
 
 <style>
   /* Phone (portrait): content, then a bottom tab bar. */

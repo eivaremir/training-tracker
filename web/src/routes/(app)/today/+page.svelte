@@ -15,7 +15,7 @@
   import IconButton from '$lib/components/IconButton.svelte';
   import SetRow from '$lib/components/SetRow.svelte';
   import EditSetForm from '$lib/components/EditSetForm.svelte';
-  import RestTimer from '$lib/components/RestTimer.svelte';
+  import { rest } from '$lib/rest.svelte';
   import { store } from '$lib/store.svelte';
   import { meetsGoal, fmtWeight } from '$lib/units';
   import { uid, weekdayKey, ymd } from '$lib/dates';
@@ -62,7 +62,6 @@
   // TopBar's height, so the progress block sticks right under it (TopBar grows with the safe-area inset).
   let barH = $state(0);
   let restSheet = $state(false);
-  let restSeconds = $state<number | null>(null);
 
   // Sessions are created lazily on the first logged set.
   function writeLogs(next: SetLog[], id = session?.id ?? uid('s')) {
@@ -75,7 +74,9 @@
     const sessionId = session?.id ?? uid('s');
     const log: SetLog = { sessionId, exerciseId: re.exerciseId, setIndex: idx, goalSnapshot: { ...goal }, actual, hitGoal, loggedAt: new Date().toISOString() };
     writeLogs([...$state.snapshot(logs), log], sessionId);
-    if (actual && store.restEnabled && goal.restSeconds > 0) restSeconds = goal.restSeconds;
+    // The rest timer itself floats over every page (app layout).
+    if (selected && actual && store.restEnabled && goal.restSeconds > 0)
+      rest.start(goal.restSeconds, { planId: selected.plan.id, routineId: selected.routine.id, sessionId });
   }
   function saveEdit(actual: { reps: number; weight: number }) {
     if (!editing) return;
@@ -117,7 +118,7 @@
   {#if items.length > 1}
     <div class="picker">
       {#each items as it (it.plan.id + it.routine.id)}
-        <button class:on={it.plan.id === plan.id && it.routine.id === routine.id} onclick={() => { selectedKey = `${it.plan.id}/${it.routine.id}`; restSeconds = null; }}>
+        <button class:on={it.plan.id === plan.id && it.routine.id === routine.id} onclick={() => (selectedKey = `${it.plan.id}/${it.routine.id}`)}>
           {it.routine.name} · {it.plan.name}
         </button>
       {/each}
@@ -191,12 +192,6 @@
     <Toggle bind:on={store.restEnabled} />
   </div>
 </Sheet>
-
-{#if restSeconds}
-  {#key restSeconds + logs.length}
-    <RestTimer seconds={restSeconds} ondone={() => (restSeconds = null)} />
-  {/key}
-{/if}
 
 <style>
   .empty { padding: 32px; text-align: center; color: var(--text-mid); }
