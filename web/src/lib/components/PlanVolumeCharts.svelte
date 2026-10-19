@@ -7,17 +7,12 @@
   import { toUnit, unit } from '../units';
   import { volumeByDate, planExerciseIds, fmtVol } from '../volume';
   import { MUSCLES, groupOf, libraryHref } from '../muscles';
+  import { fmtDay, niceStep } from '../chart';
 
   const WEEKS = 8, DAY = 864e5;
   const W = 320, H = 170, padL = 38, padR = 10, padT = 10, padB = 22, inset = 6;
   const plotW = W - padL - padR, plotH = H - padT - padB;
 
-  const fmtDay = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
-  // 1 / 2 / 2.5 / 5 × 10ⁿ tick steps.
-  const niceStep = (raw: number) => {
-    const mag = 10 ** Math.floor(Math.log10(raw || 1));
-    return [1, 2, 2.5, 5, 10].find((f) => raw / mag <= f)! * mag;
-  };
 
   type Series = { id: string; name: string; groups: string[]; total: number; days: { ds: string; t: number; vol: number }[] };
   type Chart = { key: string; title: string; series: Series[] };

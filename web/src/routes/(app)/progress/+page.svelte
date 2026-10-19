@@ -9,6 +9,7 @@
   import Button from '$lib/components/Button.svelte';
   import WeightCard from '$lib/components/WeightCard.svelte';
   import VolumeHeatmap from '$lib/components/VolumeHeatmap.svelte';
+  import VolumeTrend from '$lib/components/VolumeTrend.svelte';
   import { store } from '$lib/store.svelte';
   import { unit, toUnit } from '$lib/units';
   import { addDays, ymd } from '$lib/dates';
@@ -17,18 +18,15 @@
   const sessions = $derived(store.sessions.filter((s) => s.date >= cut && s.logs.length).sort((a, b) => a.date.localeCompare(b.date)));
   const stats = $derived(sessions.map((s) => {
     const total = s.logs.length, hit = s.logs.filter((l) => l.hitGoal).length;
-    const volume = Math.round(toUnit(s.logs.reduce((n, l) => n + (l.actual ? l.actual.reps * l.actual.weight : 0), 0), 0));
-    return { date: s.date, total, hit, pct: total ? hit / total : 0, volume };
+    return { date: s.date, total, hit, pct: total ? hit / total : 0 };
   }));
   const last12 = $derived(stats.slice(-12));
   const avgPct = $derived(stats.length ? stats.reduce((s, x) => s + x.pct, 0) / stats.length : 0);
-  const maxVol = $derived(Math.max(...last12.map((s) => s.volume), 1));
   const prs = $derived.by(() => {
     const pr: Record<string, number> = {};
     sessions.flatMap((s) => s.logs).forEach((l) => { if (l.actual && l.actual.weight > (pr[l.exerciseId] || 0)) pr[l.exerciseId] = l.actual.weight; });
     return Object.entries(pr).sort((a, b) => b[1] - a[1]).slice(0, 5);
   });
-  const vy = (v: number) => 80 - (v / maxVol) * 70 - 5;
 </script>
 
 <TopBar title="Progress" subtitle="LAST 28 DAYS">
@@ -46,7 +44,9 @@
     {/each}
   </div>
 
-  <div class="card box"><VolumeHeatmap title="Total volume · per day" /></div>
+  <div class="card box"><VolumeTrend /></div>
+
+  <div class="card box"><VolumeHeatmap title="Volume calendar" /></div>
 
   {#if !sessions.length}
     <div class="card empty">
@@ -66,18 +66,6 @@
           </div>
         {/each}
       </div>
-    </div>
-
-    <div class="card box">
-      <Label>Total volume · last 12 sessions</Label>
-      <div style="margin-top:10px">
-        <BigNum size={32}>{(last12[last12.length - 1]?.volume || 0).toLocaleString()}</BigNum>
-        <Label size={10} color="var(--text-low)"> {unit()} most recent</Label>
-      </div>
-      <svg width="100%" height="80" viewBox="0 0 {last12.length * 30} 80" preserveAspectRatio="none" style="margin-top:14px" aria-label="Volume trend">
-        <polyline points={last12.map((s, i) => `${i * 30 + 15},${vy(s.volume)}`).join(' ')} fill="none" stroke="var(--text)" stroke-width="1.5" vector-effect="non-scaling-stroke" />
-        {#each last12 as s, i (i)}<circle cx={i * 30 + 15} cy={vy(s.volume)} r="2" fill="var(--text)" />{/each}
-      </svg>
     </div>
 
     <div class="card box">
