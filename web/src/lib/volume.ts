@@ -4,29 +4,48 @@ import { latestBodyKg, isBodyweight } from './units';
 import { routinesOn } from './plans';
 import type { Exercise, SetLog } from './types';
 
-/** Load a set moved: bodyweight sets logged as 0 move the lifter's own weight (latest weigh-in), as on the heat map. */
+/** Weight a set moved (kg): bodyweight sets logged as 0 move the lifter's own weight (latest weigh-in), as on the heat map. */
+export const setWeightKg = (l: SetLog, ex: Exercise | undefined, bodyKg = latestBodyKg() ?? 0) =>
+  l.actual ? l.actual.weight || (isBodyweight(ex?.equipment) ? bodyKg : 0) : 0;
+
+/** Load a set moved: weight × reps. */
 export const setVolumeKg = (l: SetLog, ex: Exercise | undefined, bodyKg = latestBodyKg() ?? 0) =>
-  l.actual ? (l.actual.weight || (isBodyweight(ex?.equipment) ? bodyKg : 0)) * l.actual.reps : 0;
+  l.actual ? setWeightKg(l, ex, bodyKg) * l.actual.reps : 0;
 
-export type DayVolume = { vol: number; sessions: number; sets: number };
+/** Reps a set performed (0 when skipped). */
+export const setRepsOf = (l: SetLog) => l.actual?.reps ?? 0;
 
-/** Volume per training day ("YYYY-MM-DD" → totals), for one exercise or all of them, within [from, to].
- *  Cardio and stretching sets count as training but add no volume. */
+/** `vol` = Σ weight × reps, `weight` = Σ per-set weight (both exclude cardio/stretching); `reps` counts every set. */
+export type DayVolume = { vol: number; weight: number; reps: number; sessions: number; sets: number };
+
+/** Metric the heat maps can show. Volume and weight are in kg (convert with toUnit); reps is a plain count. */
+export type HeatMetric = 'volume' | 'weight' | 'reps';
+export const HEAT_METRICS: { key: HeatMetric; label: string }[] = [
+  { key: 'volume', label: 'Volume' },
+  { key: 'weight', label: 'Weight' },
+  { key: 'reps', label: 'Reps' }
+];
+/** The day's total for the chosen metric. */
+export const dayMetric = (d: DayVolume, m: HeatMetric) => (m === 'reps' ? d.reps : m === 'weight' ? d.weight : d.vol);
+
+/** Totals per training day ("YYYY-MM-DD" → totals), for one exercise or all of them, within [from, to].
+ *  Cardio and stretching sets count as training and keep their reps, but add no volume or weight. */
 export function volumeByDate(from: string, to: string, exerciseId?: string): Map<string, DayVolume> {
   const bodyKg = latestBodyKg() ?? 0;
   const out = new Map<string, DayVolume>();
   for (const s of store.sessions) {
     if (s.date < from || s.date > to) continue;
-    let vol = 0, sets = 0;
+    let vol = 0, weight = 0, reps = 0, sets = 0;
     for (const l of s.logs) {
       if (!l.actual || (exerciseId && l.exerciseId !== exerciseId)) continue;
       const ex = store.exercise(l.exerciseId);
-      if (tracksVolume(ex)) vol += setVolumeKg(l, ex, bodyKg);
+      reps += setRepsOf(l);
+      if (tracksVolume(ex)) { vol += setVolumeKg(l, ex, bodyKg); weight += setWeightKg(l, ex, bodyKg); }
       sets++;
     }
     if (!sets) continue;
-    const d = out.get(s.date) ?? { vol: 0, sessions: 0, sets: 0 };
-    out.set(s.date, { vol: d.vol + vol, sessions: d.sessions + 1, sets: d.sets + sets });
+    const d = out.get(s.date) ?? { vol: 0, weight: 0, reps: 0, sessions: 0, sets: 0 };
+    out.set(s.date, { vol: d.vol + vol, weight: d.weight + weight, reps: d.reps + reps, sessions: d.sessions + 1, sets: d.sets + sets });
   }
   return out;
 }

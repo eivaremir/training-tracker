@@ -1,14 +1,28 @@
 <script lang="ts">
-  // Calendar heat graph of training volume (weight × reps) per day: one column per week (Mon-first), as many weeks
-  // as fit the card, ending this week. Whole log, or one exercise with `exerciseId`.
+  // Calendar heat graph of training per day — volume (weight × reps), weight lifted, or reps — one column per week
+  // (Mon-first), as many weeks as fit the card, ending this week. Whole log, or one exercise with `exerciseId`.
   import Label from './Label.svelte';
   import { heatColor } from '../heat';
   import { addDays, mondayOf, parseYmd, ymd } from '../dates';
   import { store } from '../store.svelte';
   import { toUnit, unit } from '../units';
-  import { volumeByDate, fmtVol } from '../volume';
+  import { volumeByDate, fmtVol, dayMetric, HEAT_METRICS, type HeatMetric } from '../volume';
 
   let { exerciseId, title = 'Volume · per day' }: { exerciseId?: string; title?: string } = $props();
+
+  // Metric choice is remembered per viewer (shared by every calendar); storage can be unavailable (private mode, SSR).
+  const KEY = 'tt-cal-metric';
+  const readMetric = (): HeatMetric => {
+    try { const v = localStorage.getItem(KEY); return HEAT_METRICS.some((m) => m.key === v) ? (v as HeatMetric) : 'volume'; } catch { return 'volume'; }
+  };
+  let metric = $state<HeatMetric>(readMetric());
+  const setMetric = (m: HeatMetric) => { metric = m; picked = null; try { localStorage.setItem(KEY, m); } catch { /* private mode */ } };
+  const isReps = $derived(metric === 'reps');
+  // A metric total as text: reps is a count, volume/weight carry the weight unit.
+  const show = (n: number) => (isReps ? `${fmtVol(n)} reps` : `${fmtVol(toUnit(n, 0))} ${unit()}`);
+  // Swap the leading word of the passed title to match the metric ("Volume calendar" → "Reps calendar").
+  const METRIC_WORD: Record<HeatMetric, string> = { volume: 'Volume', weight: 'Weight', reps: 'Reps' };
+  const heading = $derived(title.replace(/volume/i, METRIC_WORD[metric]));
 
   const CELL = 13, GAP = 3, PITCH = CELL + GAP, LEFT = 14, TOP = 14;
   let width = $state(0);
@@ -22,9 +36,9 @@
     const start = addDays(mondayOf(store.today), -(weeks - 1) * 7);
     const byDate = volumeByDate(ymd(start), todayStr, exerciseId);
     // Scale to the 95th-percentile day so one huge session doesn't wash the rest out.
-    const vols = [...byDate.values()].map((d) => d.vol).filter((v) => v > 0).sort((a, b) => a - b);
-    const cap = vols.length ? vols[Math.min(vols.length - 1, Math.floor(vols.length * 0.95))] : 1;
-    const cells: { ds: string; x: number; y: number; vol: number; sessions: number; sets: number; fill: string; today: boolean }[] = [];
+    const vals = [...byDate.values()].map((d) => dayMetric(d, metric)).filter((v) => v > 0).sort((a, b) => a - b);
+    const cap = vals.length ? vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.95))] : 1;
+    const cells: { ds: string; x: number; y: number; m: number; sessions: number; sets: number; fill: string; today: boolean }[] = [];
     const months: { x: number; label: string }[] = [];
     for (let w = 0; w < weeks; w++) {
       for (let r = 0; r < 7; r++) {
@@ -32,13 +46,14 @@
         if (ds > todayStr) break;
         if (d.getDate() === 1 || (w === 0 && r === 0)) months.push({ x: LEFT + w * PITCH, label: fmtMonth(d) });
         const v = byDate.get(ds);
-        const fill = !v ? 'var(--border)' : !v.vol ? 'var(--mid)' : heatColor(0.12 + 0.88 * Math.min(1, v.vol / cap));
-        cells.push({ ds, x: LEFT + w * PITCH, y: TOP + r * PITCH, vol: v?.vol ?? 0, sessions: v?.sessions ?? 0, sets: v?.sets ?? 0, fill, today: ds === todayStr });
+        const m = v ? dayMetric(v, metric) : 0;
+        const fill = !v ? 'var(--border)' : !m ? 'var(--mid)' : heatColor(0.12 + 0.88 * Math.min(1, m / cap));
+        cells.push({ ds, x: LEFT + w * PITCH, y: TOP + r * PITCH, m, sessions: v?.sessions ?? 0, sets: v?.sets ?? 0, fill, today: ds === todayStr });
       }
     }
     // A month label needs ~3 columns; drop the first one when the next month starts right after it.
     if (months.length > 1 && months[1].x - months[0].x < PITCH * 3) months.shift();
-    const total = vols.reduce((n, v) => n + v, 0);
+    const total = vals.reduce((n, v) => n + v, 0);
     return { cells, months, total, days: byDate.size, w: LEFT + weeks * PITCH - GAP, h: TOP + 7 * PITCH - GAP };
   });
 
@@ -55,27 +70,34 @@
 
 <div class="wrap" bind:clientWidth={width}>
   <div class="head">
-    <Label>{title}</Label>
-    <Label size={9} color="var(--text-low)">{weeks} weeks</Label>
+    <Label>{heading}</Label>
+    <div class="hctl">
+      <div class="pill" role="radiogroup" aria-label="Calendar metric">
+        {#each HEAT_METRICS as m (m.key)}
+          <button role="radio" aria-checked={metric === m.key} class:on={metric === m.key} onclick={() => setMetric(m.key)}>{m.label}</button>
+        {/each}
+      </div>
+      <Label size={9} color="var(--text-low)">{weeks} wks</Label>
+    </div>
   </div>
 
   <div class="readout" aria-live="polite">
     {#if sel}
       <span class="date">{fmtDay(parseYmd(sel.ds))}</span>
       {#if sel.sets}
-        <span class="val">{sel.vol ? `${fmtVol(toUnit(sel.vol, 0))} ${unit()}` : 'No load'}</span>
+        <span class="val">{sel.m ? show(sel.m) : isReps ? 'No reps' : 'No load'}</span>
         <span class="meta">{sel.sets} set{sel.sets === 1 ? '' : 's'}{exerciseId ? '' : ` · ${sel.sessions} session${sel.sessions === 1 ? '' : 's'}`}</span>
       {:else}
         <span class="meta">Rest</span>
       {/if}
     {:else}
-      <span class="val">{fmtVol(toUnit(grid.total, 0))} {unit()}</span>
+      <span class="val">{show(grid.total)}</span>
       <span class="meta">{grid.days} day{grid.days === 1 ? '' : 's'} trained · tap a day</span>
     {/if}
   </div>
 
   <svg width={grid.w} height={grid.h} viewBox="0 0 {grid.w} {grid.h}" role="img"
-    aria-label="{title}: {fmtVol(toUnit(grid.total, 0))} {unit()} over {grid.days} training days in the last {weeks} weeks"
+    aria-label="{heading}: {show(grid.total)} over {grid.days} training days in the last {weeks} weeks"
     onpointermove={(e) => { if (e.pointerType === 'mouse') picked = cellAt(e)?.ds ?? picked; }}
     onpointerdown={(e) => { const c = cellAt(e); picked = !c || c.ds === picked ? null : c.ds; }}>
     {#each grid.months as m (m.x)}
@@ -87,7 +109,7 @@
     {#each grid.cells as c (c.ds)}
       <rect x={c.x} y={c.y} width={CELL} height={CELL} rx="2" fill={c.fill} opacity={c.sets ? 1 : 0.5}
         stroke={c.ds === picked ? 'var(--text)' : c.today ? 'var(--text-low)' : 'none'} stroke-width="1.5">
-        <title>{c.ds}: {c.sets ? `${fmtVol(toUnit(c.vol, 0))} ${unit()}` : 'rest'}</title>
+        <title>{c.ds}: {c.sets ? show(c.m) : 'rest'}</title>
       </rect>
     {/each}
   </svg>
@@ -101,7 +123,12 @@
 
 <style>
   .wrap { min-width: 0; }
-  .head { display: flex; justify-content: space-between; align-items: baseline; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hctl { display: flex; align-items: center; gap: 8px; }
+  .pill { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .pill button { padding: 4px 9px; border: none; cursor: pointer; background: transparent; color: var(--text-mid);
+    font-family: var(--f-cond); font-weight: 600; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+  .pill button.on { background: var(--text); color: var(--bg); }
   .readout { margin: 8px 0 10px; min-height: 22px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   .date { font-family: var(--f-mono); font-size: 12px; color: var(--text-mid); letter-spacing: 0.5px; }
   .val { font-family: var(--f-cond); font-weight: 700; font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
