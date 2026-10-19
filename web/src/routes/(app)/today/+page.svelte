@@ -12,7 +12,7 @@
   import ExerciseThumb from '$lib/components/ExerciseThumb.svelte';
   import SetRow from '$lib/components/SetRow.svelte';
   import EditSetForm from '$lib/components/EditSetForm.svelte';
-  import RestTimer from '$lib/components/RestTimer.svelte';
+  import RestTimer, { startRest, restFor } from '$lib/components/RestTimer.svelte';
   import { store } from '$lib/store.svelte';
   import { meetsGoal, fmtWeight } from '$lib/units';
   import { uid, weekdayKey, ymd } from '$lib/dates';
@@ -53,7 +53,10 @@
 
   let editing = $state<{ re: RoutineExercise; idx: number } | null>(null);
   let restSheet = $state(false);
-  let restSeconds = $state<number | null>(null);
+  // The countdown itself is a saved end time ($lib/rest), so it survives backgrounding, reloads and
+  // leaving this page; restSeconds picks it back up on mount, and setting it to null hides it.
+  // svelte-ignore state_referenced_locally
+  let restSeconds = $state<number | null>(restFor(session));
 
   // Sessions are created lazily on the first logged set.
   function writeLogs(next: SetLog[], id = session?.id ?? uid('s')) {
@@ -66,7 +69,10 @@
     const sessionId = session?.id ?? uid('s');
     const log: SetLog = { sessionId, exerciseId: re.exerciseId, setIndex: idx, goalSnapshot: { ...goal }, actual, hitGoal, loggedAt: new Date().toISOString() };
     writeLogs([...$state.snapshot(logs), log], sessionId);
-    if (actual && store.restEnabled && goal.restSeconds > 0) restSeconds = goal.restSeconds;
+    if (selected && actual && store.restEnabled && goal.restSeconds > 0) {
+      startRest(goal.restSeconds, { planId: selected.plan.id, routineId: selected.routine.id, sessionId });
+      restSeconds = goal.restSeconds;
+    }
   }
   function saveEdit(actual: { reps: number; weight: number }) {
     if (!editing) return;
@@ -175,10 +181,8 @@
   </div>
 </Sheet>
 
-{#if restSeconds}
-  {#key restSeconds + logs.length}
-    <RestTimer seconds={restSeconds} ondone={() => (restSeconds = null)} />
-  {/key}
+{#if restSeconds && restFor(session)}
+  <RestTimer ondone={() => (restSeconds = null)} />
 {/if}
 
 <style>
