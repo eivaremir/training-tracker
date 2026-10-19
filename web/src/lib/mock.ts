@@ -23,7 +23,8 @@ export function buildMock(today = new Date()): AppState {
   };
   const ex = (id: string, name: string, notes = ''): Exercise => ({
     id, name, notes, photoUrl: null, createdAt: now, equipment: EQUIP[id],
-    muscles: { primary: MUSCLE_MAP[id][0], secondary: MUSCLE_MAP[id][1] }
+    muscles: { primary: MUSCLE_MAP[id][0], secondary: MUSCLE_MAP[id][1] },
+    category: id === 'ex_run' ? 'cardio' : id === 'ex_yoga' ? 'stretching' : 'strength'
   });
   const exercises = [
     ex('ex_bench', 'Barbell Bench Press', 'Pause 1s on chest'), ex('ex_squat', 'Back Squat', 'High bar, ATG'),

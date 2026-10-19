@@ -21,8 +21,7 @@
       { href: '/plans', label: 'Plans', icon: 'cal' }
     ] },
     { href: '/library', label: 'Library', icon: 'dumbbell' },
-    { href: '/progress', label: 'Stats', icon: 'history' },
-    { href: '/settings', label: 'Settings', icon: 'settings' }
+    { href: '/progress', label: 'Stats', icon: 'history' }
   ];
 
   let menuOpen = $state(false);
@@ -110,7 +109,7 @@
   main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .content { flex: 1; width: 100%; }
   nav { order: 1; position: sticky; bottom: 0; z-index: 10; background: var(--bg); border-top: 1px solid var(--border);
-    display: grid; grid-template-columns: repeat(5, 1fr); padding-bottom: env(safe-area-inset-bottom, 0); }
+    display: grid; grid-template-columns: repeat(4, 1fr); padding-bottom: env(safe-area-inset-bottom, 0); }
   .brand { display: none; }
   .tab { color: var(--text-low); padding: 11px 0 13px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
     border: none; border-top: 2px solid transparent; margin-top: -1px; text-decoration: none; background: none; font: inherit; cursor: pointer; }
@@ -132,7 +131,7 @@
   .menu .tab.on { background: var(--surface-hi); }
 
   /* Landscape phones and tablets: a vertical rail on the left. It doesn't scroll (that would clip the menu's flyout);
-     the five tabs fit even on short landscape phones. */
+     the four tabs fit even on short landscape phones. */
   @media (min-width: 720px) {
     .shell { flex-direction: row; }
     nav { order: 0; position: sticky; top: 0; bottom: auto; height: 100vh; height: 100dvh; width: 84px; flex-shrink: 0;

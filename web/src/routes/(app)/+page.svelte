@@ -9,6 +9,7 @@
   import BigNum from '$lib/components/BigNum.svelte';
   import Button from '$lib/components/Button.svelte';
   import BodyHeatMap from '$lib/components/BodyHeatMap.svelte';
+  import PlanVolumeCharts from '$lib/components/PlanVolumeCharts.svelte';
   import WeightCard from '$lib/components/WeightCard.svelte';
   import { store } from '$lib/store.svelte';
   import { WEEK_MON, addDays, mondayOf, weekdayKey, ymd } from '$lib/dates';
@@ -20,7 +21,6 @@
   const monthName = today.toLocaleString('en-US', { month: 'long' }).toUpperCase();
   const monday = mondayOf(today);
 
-  const todayItems = $derived(store.itemsFor(today));
   const subscribed = $derived(store.plans.filter((p) => p.subscribed));
   const done = (planId: string, routineId: string, date: string) =>
     store.sessions.find((s) => s.planId === planId && s.routineId === routineId && s.date === date && s.logs.length);
@@ -100,37 +100,6 @@
 </TopBar>
 
 <div class="page r-cols">
-  {#if todayItems.length}
-    <div class="today">
-      <div class="between" style="margin-bottom:10px">
-        <Label>Today</Label>
-        <Label color="var(--text-low)">{todayItems.length} routine{todayItems.length > 1 ? 's' : ''}</Label>
-      </div>
-      <div class="col">
-        {#each todayItems as { plan, routine } (plan.id + routine.id)}
-          {@const s = store.sessionFor(plan.id, routine.id, todayStr)}
-          {@const total = routine.exercises.reduce((n, e) => n + e.goals.length, 0)}
-          <button class="item" onclick={() => goto(`/today?plan=${plan.id}&routine=${routine.id}`)}>
-            <div style="flex:1;min-width:0">
-              <div class="cond" style="font-size:18px">{routine.name}</div>
-              <Label size={9} color="var(--text-low)">{plan.name} · {routine.exercises.length} ex · {total} sets</Label>
-            </div>
-            {#if s && s.logs.length}
-              <div class="progress-pill"><span>{s.logs.length}/{total}</span><Icon name="arrow-r" size={12} /></div>
-            {:else}
-              <Icon name="play" size={16} />
-            {/if}
-          </button>
-        {/each}
-      </div>
-    </div>
-  {:else}
-    <div class="rest">
-      <Label color="var(--text-low)">Today</Label>
-      <div>Rest day — no routine scheduled.</div>
-    </div>
-  {/if}
-
   <BodyHeatMap from={heatFrom} to={todayStr}>
     {#snippet controls()}
       <div class="pill" role="radiogroup" aria-label="Heat map range">
@@ -184,6 +153,8 @@
     </div>
   </div>
 
+  <PlanVolumeCharts />
+
   <div>
     <div class="between" style="margin-bottom:10px">
       <Label>Plans</Label>
@@ -224,13 +195,6 @@
   .page { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
   .between { display: flex; align-items: center; justify-content: space-between; }
   .col { display: flex; flex-direction: column; gap: 8px; }
-  .today { background: var(--surface-hi); border: 1px solid var(--border-hi); border-radius: 14px; padding: 14px; }
-  .item { width: 100%; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-    display: flex; align-items: center; gap: 12px; cursor: pointer; text-align: left; color: var(--text); }
-  .progress-pill { padding: 6px 10px; background: var(--text); color: var(--bg); border-radius: 6px; font-family: var(--f-cond); font-weight: 600;
-    font-size: 12px; letter-spacing: 1px; text-transform: uppercase; display: flex; align-items: center; gap: 6px; }
-  .rest { background: var(--surface); border: 1px dashed var(--border); border-radius: 14px; padding: 18px; text-align: center; }
-  .rest div { margin-top: 6px; font-family: var(--f-sans); font-size: 13px; color: var(--text-mid); }
   .strip { display: flex; align-items: flex-end; gap: 4px; height: 50px; }
   .strip div { flex: 1; height: 36px; border-radius: 3px; }
   /* Month grid: same scale as the strip — border (none, at 50%), mid (1), text (2+). */

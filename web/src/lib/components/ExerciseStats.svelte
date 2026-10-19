@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte';
   import Label from './Label.svelte';
   import BigNum from './BigNum.svelte';
+  import VolumeHeatmap from './VolumeHeatmap.svelte';
   import { heatColor } from '../heat';
   import { addDays, mondayOf, parseYmd } from '../dates';
   import { store } from '../store.svelte';
@@ -212,6 +213,8 @@
       </div>
       {#if data.needsWeighIn}<p class="hint">Log a weigh-in to chart volume for bodyweight moves.</p>{/if}
     </div>
+
+    <div class="chart"><VolumeHeatmap {exerciseId} title="Volume calendar" /></div>
 
     <div>
       <Label>Recent sets</Label>
