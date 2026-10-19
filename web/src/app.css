@@ -30,6 +30,12 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
 body { min-height: 100vh; }
 button { font-family: inherit; }
 input, button { -webkit-tap-highlight-color: transparent; }
+/* No double-tap zoom (rapid taps on the reps/load steppers kept zooming the page); pinch zoom still works.
+   touch-action isn't inherited and scroll containers reset it, so it goes on every element. */
+* { touch-action: manipulation; }
+/* iOS zooms into any field under 16px when it gets focus. This is the default; the viewport meta's
+   maximum-scale=1 (app.html) covers the fields whose screens set a smaller size. */
+input, select, textarea { font-size: 16px; }
 ::selection { background: var(--text); color: var(--bg); }
 ::-webkit-scrollbar { width: 0; height: 0; }
 
