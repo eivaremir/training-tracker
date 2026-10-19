@@ -1,8 +1,12 @@
 // Progressive overload tip for an exercise on the Today screen: how to beat its last session's volume (weight × reps).
 //
-// - Momentum (volume held or rose across the last 2 sessions): keep the trend going, at least +2% and at most +10%,
-//   as +1 rep on some sets, or as one extra set when that would take more than a rep per set.
-// - Otherwise, the default: +1–2% over the last session as extra reps beyond today's goals.
+// Target = last session's actual volume × (1 + step). The step comes from momentum:
+// - Volume held or rose across the last 2 sessions → keep the trend going, clamped to +2%…+10%.
+// - Otherwise (and on a first repeat) → a gentle +1%.
+// The suggestion is the smallest real bump that reaches the target on top of today's planned goals: +1 rep on the
+// heaviest sets, or — when that would need more than a rep per set — one extra set at the heaviest set's load.
+// Every printed number (the "% vs last" and the last → target volumes) is derived from the volume that suggestion
+// actually produces, so they always reconcile even when the last session's sets differ from today's goals.
 // The last session is last week's on a weekly plan. Volume is counted as on the charts (lib/volume.ts).
 import { store } from './store.svelte';
 import { fmtWeight, isBodyweight, latestBodyKg, toUnit, unit } from './units';
@@ -48,38 +52,50 @@ export function overloadTip(exerciseId: string, goals: SetGoal[], today = store.
 
   const bw = isBodyweight(ex?.equipment), bodyKg = latestBodyKg() ?? 0;
   const kgOf = (g: SetGoal) => g.weight || (bw ? bodyKg : 0);
-  // Average load per rep across today's sets, to turn a volume gap into reps.
-  const repKg = goals.reduce((n, g) => n + kgOf(g), 0) / goals.length;
-  if (!repKg) return null;
-  const planned = goals.reduce((n, g) => n + g.reps * kgOf(g), 0);
+  const weights = goals.map(kgOf);
+  const maxW = Math.max(...weights);
+  if (!maxW) return null; // nothing to grow by volume (e.g. a bodyweight move with no weigh-in yet)
+  const planned = goals.reduce((n, g, i) => n + g.reps * weights[i], 0);
 
   const momentum = !!before && last.kg >= before.kg;
   const trend = before ? last.kg / before.kg - 1 : 0;
-  const lo = momentum ? Math.min(MAX_STEP, Math.max(DEFAULT_HI, trend)) : DEFAULT_LO;
-  const hi = momentum ? lo : DEFAULT_HI;
-  // Extra reps beyond today's goals to reach last session × (1 + p).
-  const need = (p: number) => Math.max(0, Math.ceil((last.kg * (1 + p) - planned) / repKg - 1e-9));
-  const nLo = need(lo), nHi = need(hi);
-  const target = momentum ? pct(lo) : '+1–2%';
+  const step = momentum ? Math.min(MAX_STEP, Math.max(DEFAULT_HI, trend)) : DEFAULT_LO;
+  const target = last.kg * (1 + step);
+
   const vs = `vs ${fmtDate(last.date)}`;
   const lead = !before ? `First repeat · last time ${vol(last.kg)}`
     : momentum ? (trend > 0.0005 ? `Volume up ${abs(trend)} over your last 2 sessions` : 'Volume held steady over your last 2 sessions')
     : `Volume down ${abs(trend)} last session`;
-  const goal = momentum ? vol(last.kg * (1 + lo)) : `${fmtVol(toUnit(last.kg * (1 + lo), 0))}–${vol(last.kg * (1 + hi))}`;
-  const detail = `${fmtDate(last.date)}: ${vol(last.kg)} · target ${goal}`;
+  // The whole tip in one line: last session's volume → the volume the suggestion below reaches.
+  const detailTo = (result: number) => `${fmtDate(last.date)}: ${vol(last.kg)} → ${vol(result)}`;
 
-  if (!nHi) return { kind: 'covered', momentum, lead, action: `Today's goals are already ${pct(planned / last.kg - 1)} ${vs}. Hit every set.`, detail };
-
-  if (momentum) {
-    if (nHi <= goals.length) {
-      const where = nHi === goals.length ? 'every set' : `${nHi} set${nHi === 1 ? '' : 's'}`;
-      return { kind: 'reps', momentum, lead, action: `Add 1 rep on ${where} (${target} ${vs}).`, detail };
-    }
-    // More than a rep per set: one extra set at the last set's load instead.
-    const g = goals[goals.length - 1], reps = Math.min(nHi, g.reps);
-    const load = g.weight ? ` × ${fmtWeight(g.weight)}` : ' reps';
-    return { kind: 'set', momentum, lead, action: `Add a ${ordinal(goals.length + 1)} set: ${reps}${load} (${target} ${vs}).`, detail };
+  // Today's planned goals already match or beat the target: just hold the line.
+  if (planned >= target - 1e-9) {
+    const by = Math.round((planned / last.kg - 1) * 100);
+    return { kind: 'covered', momentum, lead, action: `Today's goals already beat ${fmtDate(last.date)} by ${by}%. Hit every set.`, detail: detailTo(planned) };
   }
-  const reps = nLo === nHi ? `${nHi} rep${nHi === 1 ? '' : 's'}` : nLo ? `${nLo}–${nHi} reps` : `up to ${nHi} reps`;
-  return { kind: 'reps', momentum, lead, action: `Aim for ${target} ${vs}: add ${reps} beyond your goals.`, detail };
+
+  const gap = target - planned;
+  // Fewest extra reps that reach the target: +1 rep on the heaviest sets first, one rep per set at most.
+  const desc = [...weights].sort((a, b) => b - a);
+  let k = 0, added = 0;
+  while (k < goals.length && added < gap - 1e-9) added += desc[k++];
+  if (added >= gap - 1e-9) {
+    const result = planned + added;
+    const uniform = weights.every((w) => w === weights[0]);
+    const where = k === goals.length ? 'every set' : uniform ? `${k} set${k === 1 ? '' : 's'}` : `your heaviest ${k} sets`;
+    return { kind: 'reps', momentum, lead, action: `Add 1 rep on ${where} to reach ${pct(result / last.kg - 1)} ${vs}.`, detail: detailTo(result) };
+  }
+
+  // More than a rep per set needed: one extra set at the heaviest set's load, capped to a normal set.
+  const g = goals.reduce((a, b) => (kgOf(b) > kgOf(a) ? b : a));
+  const w = kgOf(g);
+  const reps = Math.min(Math.ceil(gap / w - 1e-9), g.reps);
+  const result = planned + reps * w;
+  const load = g.weight ? ` × ${fmtWeight(g.weight)}` : ' reps';
+  const setTxt = `Add a ${ordinal(goals.length + 1)} set: ${reps}${load}`;
+  const gain = result / last.kg - 1;
+  // A capped extra set may still fall short when today's goals are much lighter than last time — say so honestly.
+  const action = gain > 0.0005 ? `${setTxt} to reach ${pct(gain)} ${vs}.` : `${setTxt} to close on ${fmtDate(last.date)}'s ${vol(last.kg)}.`;
+  return { kind: 'set', momentum, lead, action, detail: detailTo(result) };
 }
