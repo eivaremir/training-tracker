@@ -4,8 +4,12 @@
   import Button from './Button.svelte';
   import Sheet from './Sheet.svelte';
   import TextField from './TextField.svelte';
+  import MuscleLoadMap from './MuscleLoadMap.svelte';
   import RoutineEditor from './RoutineEditor.svelte';
   import { store } from '../store.svelte';
+  import { toUnit, unit } from '../units';
+  import { fmtVol } from '../volume';
+  import { loggedLoad, totalVolumeKg } from '../muscleLoad';
   import { uid } from '../dates';
   import { routinesOn } from '../plans';
   import type { Plan, PlanKind } from '../types';
@@ -42,6 +46,13 @@
 
 <div class="wrap">
   <TextField label="Name" bind:value={name} placeholder="e.g. Hypertrophy block" />
+
+  {#if plan}
+    {@const planLogs = store.sessions.filter((x) => x.planId === plan.id).flatMap((x) => x.logs)}
+    <MuscleLoadMap score={loggedLoad(planLogs)} title="Plan progress · all logged"
+      caption={planLogs.length ? `${fmtVol(toUnit(totalVolumeKg(planLogs), 0))} ${unit()} total` : undefined}
+      empty="No sessions logged for this plan yet" />
+  {/if}
 
   <div>
     <Label>Type</Label>

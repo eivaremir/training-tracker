@@ -8,10 +8,13 @@
   import ExerciseThumb from './ExerciseThumb.svelte';
   import GoalEditor from './GoalEditor.svelte';
   import ExercisePicker from './ExercisePicker.svelte';
+  import MuscleLoadMap from './MuscleLoadMap.svelte';
   import { store } from '../store.svelte';
-  import { uid } from '../dates';
+  import { uid, mondayOf, ymd } from '../dates';
   import type { Routine, RoutineExercise } from '../types';
-  import { toUnit } from '../units';
+  import { toUnit, unit } from '../units';
+  import { fmtVol } from '../volume';
+  import { plannedLoad, loggedLoad, totalVolumeKg } from '../muscleLoad';
 
   let { routine, onsave, oncancel, ondelete }: {
     routine?: Routine; onsave: (r: Routine) => void; oncancel: () => void; ondelete?: (id: string) => void;
@@ -25,6 +28,8 @@
   let editingGoal = $state<number | null>(null);
   let confirmDel = $state(false);
   const usedBy = $derived(routine ? store.plansUsingRoutine(routine.id) : []);
+  const weekStart = ymd(mondayOf(store.today));
+  const weekLogs = $derived(routine ? store.sessions.filter((x) => x.routineId === routine.id && x.date >= weekStart && x.date <= store.todayStr).flatMap((x) => x.logs) : []);
 
   function addEx(exerciseId: string) {
     const g = { reps: 8, weight: 20, restSeconds: 90 };
@@ -42,6 +47,13 @@
 
 <div class="wrap">
   <TextField label="Name" bind:value={name} placeholder="e.g. Push B" />
+
+  <MuscleLoadMap score={plannedLoad(exs)} title="Planned load · per session" empty="Add exercises to see the load" />
+  {#if routine}
+    <MuscleLoadMap score={loggedLoad(weekLogs)} title="This week · done"
+      caption={weekLogs.length ? `${fmtVol(toUnit(totalVolumeKg(weekLogs), 0))} ${unit()}` : undefined}
+      empty="Nothing logged for this routine this week" />
+  {/if}
 
   <div>
     <div class="head">
