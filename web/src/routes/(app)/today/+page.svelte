@@ -145,7 +145,7 @@
   <div class="bar" bind:offsetHeight={barH}>
   <TopBar title={routine.name.toUpperCase()} subtitle="{plan.name} · {dateLabel}">
     {#snippet left()}
-      <MiniMuscleLoad />
+      <MiniMuscleLoad exercises={routine.exercises} />
     {/snippet}
     {#snippet right()}
       <IconButton icon="chart" size={19} label="{routine.name} load over time" onclick={() => (trendSheet = true)} />
